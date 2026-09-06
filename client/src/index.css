@@ -1,0 +1,297 @@
+/* =========================================================================
+   Strata — design tokens and base styles
+
+   Two type families carry a deliberate distinction (LOW_LEVEL_DESIGN.md §9):
+   IBM Plex Mono for anything that *is* schema content (table/column names,
+   types, ids, commit hashes), IBM Plex Sans for the tool's own chrome. If a
+   string came out of the user's schema, it should be mono.
+   ========================================================================= */
+
+:root {
+  /* Ink / stone palette */
+  --ink: #14181c;
+  --ink-2: #39424b;
+  --ink-3: #6b7681;
+  --ink-4: #98a1aa;
+
+  --bg: #eceae3;
+  --surface: #f7f6f2;
+  --surface-2: #f1efe9;
+  --surface-sunk: #e4e1d8;
+
+  --line: #d6d2c7;
+  --line-2: #c3beb0;
+  --line-strong: #a8a294;
+
+  --accent: #3d5a80;
+  --accent-hover: #32496a;
+  --accent-soft: #e3e9f1;
+  --accent-line: #b8c6d9;
+
+  --amber: #a86d1f;
+  --amber-soft: #f6ecd9;
+  --amber-line: #e0c48d;
+
+  --add: #3f6b45;
+  --add-soft: #e4eee2;
+  --add-line: #b3ceb0;
+
+  --del: #9a3b34;
+  --del-soft: #f4e4e2;
+  --del-line: #dfb3ae;
+
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  --shadow-sm: 0 1px 2px rgb(20 24 28 / 0.06);
+  --shadow-md: 0 4px 14px rgb(20 24 28 / 0.09);
+  --shadow-lg: 0 18px 48px rgb(20 24 28 / 0.18);
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* Visible focus everywhere, but only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* ---------- Typography helpers ---------- */
+
+.mono {
+  font-family: var(--mono);
+  font-feature-settings: 'zero' 1;
+}
+
+.eyebrow {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.empty {
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13px;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-sunk);
+  border-color: var(--line-strong);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-sm {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+/* Low-emphasis inline action (drop column, delete branch). */
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ---------- Form controls ---------- */
+
+.input,
+.select {
+  padding: 6px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: 13px;
+  min-width: 0;
+  transition: border-color 0.12s ease;
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--line-strong);
+}
+
+.input::placeholder {
+  color: var(--ink-4);
+}
+
+.input.mono {
+  font-family: var(--mono);
+}
+
+.select {
+  cursor: pointer;
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7681' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.check input {
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ---------- Badges ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-family: var(--sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.badge-pk {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.badge-add {
+  background: var(--add-soft);
+  border-color: var(--add-line);
+  color: var(--add);
+}
+
+.badge-del {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
+}
+
+.badge-conflict {
+  background: var(--amber-soft);
+  border-color: var(--amber-line);
+  color: var(--amber);
+}

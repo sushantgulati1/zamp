@@ -180,7 +180,7 @@ export async function commitOp(
   repoId: string,
   branchName: string,
   applyOp: (schema: Schema) => Schema,
-  message: string
+  message: string | ((before: Schema) => string)
 ): Promise<Commit> {
   await findRepoMeta(repoId);
   const branch = await findBranch(repoId, branchName);
@@ -189,7 +189,9 @@ export async function commitOp(
   const commit: Commit = {
     id: generateId(),
     parentIds: [branch.headCommitId],
-    message,
+    // Messages that name an entity need the pre-op schema to resolve an id to a
+    // name — the entity may not exist any more once the op has been applied.
+    message: typeof message === 'function' ? message(current.schema) : message,
     schema: nextSchema,
     createdAt: new Date().toISOString(),
   };

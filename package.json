@@ -1,0 +1,14 @@
+{
+  "name": "strata",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Branch, diff, and merge for database schemas.",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix client install",
+    "dev": "sh -c 'trap \"kill 0\" EXIT INT TERM; npm --prefix server run start & npm --prefix client run dev & wait'",
+    "dev:server": "npm --prefix server run start",
+    "dev:client": "npm --prefix client run dev",
+    "test": "npm --prefix server test",
+    "build": "npm --prefix client run build"
+  }
+}
