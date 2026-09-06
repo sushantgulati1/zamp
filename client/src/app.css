@@ -578,6 +578,25 @@
   min-width: 0;
 }
 
+/* Cards set `overflow: hidden`, which makes a flex item's automatic minimum
+   size resolve to 0 instead of its content height. Inside a scrolling flex
+   column that lets one child's growth (an open add-index/add-constraint form)
+   squash its siblings flat rather than scrolling the container — which is how
+   the columns table used to collapse. Pin every child against shrinking so the
+   container scrolls instead. */
+.table-detail > *,
+.history-pane > *,
+.sheet-body > *,
+.sheet-section > *,
+.stack > * {
+  flex-shrink: 0;
+}
+
+/* Same guard in the sidebar, except the branch block, which is meant to flex. */
+.side-block:not(.grow-block) {
+  flex-shrink: 0;
+}
+
 .detail-head {
   display: flex;
   align-items: center;
@@ -803,35 +822,67 @@ table.grid .btn-ghost:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  padding: 5px 7px;
+  padding: 6px 7px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
   background: var(--surface);
-  min-height: 32px;
+  min-height: 34px;
   align-items: center;
 }
 
+/* Two-state toggle. Unselected is deliberately faded — dashed, low-contrast
+   text on no fill — so the selected chips are the only thing with weight in
+   the row and the state is readable without comparing chips to each other. */
 .chip {
-  padding: 2px 8px;
-  border: 1px solid var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px dashed var(--line-2);
   border-radius: 999px;
-  background: var(--surface-2);
+  background: transparent;
+  color: var(--ink-4);
   font-family: var(--mono);
   font-size: 11.5px;
   cursor: pointer;
   transition:
     background 0.12s ease,
+    border-color 0.12s ease,
     color 0.12s ease;
 }
 
 .chip:hover {
   border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink-2);
 }
 
 .chip.on {
+  border-style: solid;
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  font-weight: 500;
+}
+
+.chip.on:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+/* Running count beside a field label, e.g. "2 selected". */
+.label-count {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--ink-4);
 }
 
 /* ---------- Toast ---------- */

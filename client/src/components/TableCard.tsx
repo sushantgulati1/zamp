@@ -3,7 +3,7 @@ import type { Table } from '../lib/types';
 import type { ConstraintType } from '../lib/types';
 import { formatType } from '../lib/format';
 import { ConfirmDialog, InlineEdit } from './ui';
-import { IconIndex, IconPlus, IconSchema, IconShield, IconTable, IconTrash } from './icons';
+import { IconCheck, IconIndex, IconPlus, IconSchema, IconShield, IconTable, IconTrash } from './icons';
 
 export type OpDispatch = (op: string, payload: unknown) => void;
 
@@ -385,25 +385,41 @@ function IndexesCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
               />
             </div>
             <div className="field">
-              <label>Columns</label>
-              <div className="chip-picker">
-                {table.columns.length === 0 && <span className="muted tiny">Add a column first</span>}
-                {table.columns.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`chip ${picked.includes(c.id) ? 'on' : ''}`}
-                    aria-pressed={picked.includes(c.id)}
-                    onClick={() =>
-                      setPicked((p) =>
-                        p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]
-                      )
-                    }
-                  >
-                    {c.name}
-                  </button>
-                ))}
+              <label id={`idx-cols-${table.id}`}>
+                Select columns
+                {picked.length > 0 && <span className="label-count">{picked.length} selected</span>}
+              </label>
+              <div
+                className="chip-picker"
+                role="group"
+                aria-labelledby={`idx-cols-${table.id}`}
+              >
+                {table.columns.length === 0 && (
+                  <span className="muted tiny">Add a column first</span>
+                )}
+                {table.columns.map((c) => {
+                  const on = picked.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`chip ${on ? 'on' : ''}`}
+                      aria-pressed={on}
+                      onClick={() =>
+                        setPicked((p) =>
+                          p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]
+                        )
+                      }
+                    >
+                      {on && <IconCheck size={11} />}
+                      {c.name}
+                    </button>
+                  );
+                })}
               </div>
+              {table.columns.length > 0 && picked.length === 0 && (
+                <span className="field-hint">Pick at least one column to index.</span>
+              )}
             </div>
             <div className="btn-row">
               <label className="check">

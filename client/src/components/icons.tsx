@@ -171,6 +171,15 @@ export function IconShield(props: IconProps) {
   );
 }
 
+export function IconCheck(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <path d="M3.25 8.5l3.25 3.25 6.25-7" />
+    </svg>
+  );
+}
+
 export function IconClose(props: IconProps) {
   return (
     <svg {...svgProps(props)}>
