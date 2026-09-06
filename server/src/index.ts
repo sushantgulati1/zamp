@@ -258,5 +258,5 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 
 const PORT = Number(process.env.PORT ?? 4000);
 app.listen(PORT, () => {
-  console.log(`Strata server listening on http://localhost:${PORT}`);
+  console.log(`Graft server listening on http://localhost:${PORT}`);
 });

@@ -1,5 +1,5 @@
 {
-  "name": "strata",
+  "name": "graft",
   "version": "0.1.0",
   "private": true,
   "description": "Branch, diff, and merge for database schemas.",

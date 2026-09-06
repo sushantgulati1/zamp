@@ -3,10 +3,11 @@ import type { Table } from '../lib/types';
 import type { ConstraintType } from '../lib/types';
 import { formatType } from '../lib/format';
 import { ConfirmDialog, InlineEdit } from './ui';
+import { IconIndex, IconPlus, IconSchema, IconShield, IconTable, IconTrash } from './icons';
 
 export type OpDispatch = (op: string, payload: unknown) => void;
 
-/** Offered in the type dropdown; free text is still allowed via the "other" path. */
+/** Offered in the type dropdown; any other type can still be typed inline. */
 const COMMON_TYPES = [
   'uuid',
   'text',
@@ -28,43 +29,31 @@ export function TableCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
 
   return (
     <>
-      <section className="card">
-        <header className="card-head">
-          <InlineEdit
-            className="card-title"
-            ariaLabel={`Table ${table.name}`}
-            hint="rename"
-            value={table.name}
-            onCommit={(name) => onOp('renameTable', { tableId: table.id, name })}
-          />
-          <span className="badge">
-            {table.columns.length} {table.columns.length === 1 ? 'column' : 'columns'}
-          </span>
-          {table.indexes.length > 0 && (
-            <span className="badge">
-              {table.indexes.length} {table.indexes.length === 1 ? 'index' : 'indexes'}
-            </span>
-          )}
-          {table.constraints.length > 0 && (
-            <span className="badge">
-              {table.constraints.length}{' '}
-              {table.constraints.length === 1 ? 'constraint' : 'constraints'}
-            </span>
-          )}
-          <span className="spacer" />
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => setConfirmDrop(true)}
-            aria-label={`Drop table ${table.name}`}
-          >
-            Drop table
-          </button>
-        </header>
+      <header className="detail-head">
+        <IconTable size={19} />
+        <InlineEdit
+          className="detail-title"
+          ariaLabel={`Table ${table.name}`}
+          hint="rename"
+          value={table.name}
+          onCommit={(name) => onOp('renameTable', { tableId: table.id, name })}
+        />
+        <span className="badge">
+          {table.columns.length} {table.columns.length === 1 ? 'column' : 'columns'}
+        </span>
+        <span className="spacer" />
+        <button className="btn btn-danger" onClick={() => setConfirmDrop(true)}>
+          <IconTrash />
+          Drop table
+        </button>
+      </header>
 
-        <ColumnsSection table={table} onOp={onOp} />
-        <IndexesSection table={table} onOp={onOp} />
-        <ConstraintsSection table={table} onOp={onOp} />
-      </section>
+      <ColumnsCard table={table} onOp={onOp} />
+
+      <div className="detail-grid">
+        <IndexesCard table={table} onOp={onOp} />
+        <ConstraintsCard table={table} onOp={onOp} />
+      </div>
 
       {confirmDrop && (
         <ConfirmDialog
@@ -89,134 +78,151 @@ export function TableCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
 
 // ---------- Columns ----------
 
-function ColumnsSection({ table, onOp }: { table: Table; onOp: OpDispatch }) {
+function ColumnsCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
+  const [adding, setAdding] = useState(false);
+
   return (
-    <div className="card-section">
-      <div className="section-head">
+    <section className="card">
+      <header className="card-head">
+        <IconSchema />
         <span className="eyebrow">Columns</span>
-      </div>
+        <span className="spacer" />
+        <button className="btn btn-primary btn-sm" onClick={() => setAdding((v) => !v)}>
+          <IconPlus />
+          {adding ? 'Cancel' : 'Add column'}
+        </button>
+      </header>
 
-      {table.columns.length === 0 ? (
-        <div className="empty">No columns yet — add the first one below.</div>
-      ) : (
-        <div className="table-wrap">
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Null</th>
-                <th>Default</th>
-                <th>Key</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {table.columns.map((col) => (
-                <tr key={col.id}>
-                  <td>
-                    <InlineEdit
-                      className="cell-name"
-                      ariaLabel={`Column ${col.name}`}
-                      hint="rename"
-                      value={col.name}
-                      onCommit={(name) =>
-                        onOp('renameColumn', { tableId: table.id, columnId: col.id, name })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <InlineEdit
-                      className="cell-type"
-                      ariaLabel={`Type of ${col.name}`}
-                      hint="retype"
-                      value={formatType(col)}
-                      onCommit={(next) => {
-                        // Accept `varchar(255)` as typed and split it back apart.
-                        const match = /^([^(]+?)\s*\(\s*(\d+)\s*\)$/.exec(next);
-                        onOp('retypeColumn', {
-                          tableId: table.id,
-                          columnId: col.id,
-                          input: match
-                            ? { type: match[1], length: Number(match[2]) }
-                            : { type: next },
-                        });
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={col.nullable}
-                        aria-label={`${col.name} nullable`}
-                        onChange={(e) =>
-                          onOp('setColumnNullable', {
-                            tableId: table.id,
-                            columnId: col.id,
-                            nullable: e.target.checked,
-                          })
-                        }
-                      />
-                    </label>
-                  </td>
-                  <td>
-                    <InlineEdit
-                      className="mono muted"
-                      ariaLabel={`Default for ${col.name}`}
-                      hint="set a default"
-                      value={col.default ?? '—'}
-                      onCommit={(next) =>
-                        onOp('setColumnDefault', {
-                          tableId: table.id,
-                          columnId: col.id,
-                          // "—" is the placeholder for "no default"; typing it back clears it.
-                          value: next === '—' ? undefined : next,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={col.primaryKey}
-                        aria-label={`${col.name} primary key`}
-                        onChange={(e) =>
-                          onOp('setColumnPrimaryKey', {
-                            tableId: table.id,
-                            columnId: col.id,
-                            pk: e.target.checked,
-                          })
-                        }
-                      />
-                      {col.primaryKey && <span className="badge badge-pk">PK</span>}
-                    </label>
-                  </td>
-                  <td className="actions">
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      aria-label={`Drop column ${col.name}`}
-                      onClick={() =>
-                        onOp('dropColumn', { tableId: table.id, columnId: col.id })
-                      }
-                    >
-                      Drop
-                    </button>
-                  </td>
+      <div className="card-section">
+        {table.columns.length === 0 ? (
+          <div className="empty">No columns yet — add the first one.</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="grid">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Null</th>
+                  <th>Default</th>
+                  <th>Key</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {table.columns.map((col) => (
+                  <tr key={col.id}>
+                    <td>
+                      <InlineEdit
+                        className="cell-name"
+                        ariaLabel={`Column ${col.name}`}
+                        hint="rename"
+                        value={col.name}
+                        onCommit={(name) =>
+                          onOp('renameColumn', { tableId: table.id, columnId: col.id, name })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <InlineEdit
+                        className="cell-type"
+                        ariaLabel={`Type of ${col.name}`}
+                        hint="retype"
+                        value={formatType(col)}
+                        onCommit={(next) => {
+                          // Accept `varchar(255)` as typed and split it back apart.
+                          const match = /^([^(]+?)\s*\(\s*(\d+)\s*\)$/.exec(next);
+                          onOp('retypeColumn', {
+                            tableId: table.id,
+                            columnId: col.id,
+                            input: match
+                              ? { type: match[1], length: Number(match[2]) }
+                              : { type: next },
+                          });
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={col.nullable}
+                          aria-label={`${col.name} nullable`}
+                          onChange={(e) =>
+                            onOp('setColumnNullable', {
+                              tableId: table.id,
+                              columnId: col.id,
+                              nullable: e.target.checked,
+                            })
+                          }
+                        />
+                      </label>
+                    </td>
+                    <td>
+                      <InlineEdit
+                        className="mono muted"
+                        ariaLabel={`Default for ${col.name}`}
+                        hint="set a default"
+                        value={col.default ?? '—'}
+                        onCommit={(next) =>
+                          onOp('setColumnDefault', {
+                            tableId: table.id,
+                            columnId: col.id,
+                            // "—" is the placeholder for "no default"; typing it back clears it.
+                            value: next === '—' ? undefined : next,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={col.primaryKey}
+                          aria-label={`${col.name} primary key`}
+                          onChange={(e) =>
+                            onOp('setColumnPrimaryKey', {
+                              tableId: table.id,
+                              columnId: col.id,
+                              pk: e.target.checked,
+                            })
+                          }
+                        />
+                        {col.primaryKey && <span className="badge badge-pk">PK</span>}
+                      </label>
+                    </td>
+                    <td className="actions">
+                      <button
+                        className="btn btn-sm btn-icon btn-ghost"
+                        aria-label={`Drop column ${col.name}`}
+                        title={`Drop column ${col.name}`}
+                        onClick={() => onOp('dropColumn', { tableId: table.id, columnId: col.id })}
+                      >
+                        <IconTrash />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      <AddColumnForm table={table} onOp={onOp} />
-    </div>
+        {adding && <AddColumnForm table={table} onOp={onOp} onDone={() => setAdding(false)} />}
+      </div>
+    </section>
   );
 }
 
-function AddColumnForm({ table, onOp }: { table: Table; onOp: OpDispatch }) {
+function AddColumnForm({
+  table,
+  onOp,
+  onDone,
+}: {
+  table: Table;
+  onOp: OpDispatch;
+  onDone: () => void;
+}) {
   const [name, setName] = useState('');
   const [type, setType] = useState('text');
   const [length, setLength] = useState('');
@@ -240,6 +246,7 @@ function AddColumnForm({ table, onOp }: { table: Table; onOp: OpDispatch }) {
     setLength('');
     setNullable(true);
     setPrimaryKey(false);
+    onDone();
   };
 
   return (
@@ -250,6 +257,7 @@ function AddColumnForm({ table, onOp }: { table: Table; onOp: OpDispatch }) {
           id={`col-name-${table.id}`}
           className="input mono"
           placeholder="email"
+          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -284,11 +292,7 @@ function AddColumnForm({ table, onOp }: { table: Table; onOp: OpDispatch }) {
         </div>
       )}
       <label className="check">
-        <input
-          type="checkbox"
-          checked={nullable}
-          onChange={(e) => setNullable(e.target.checked)}
-        />
+        <input type="checkbox" checked={nullable} onChange={(e) => setNullable(e.target.checked)} />
         nullable
       </label>
       <label className="check">
@@ -308,7 +312,7 @@ function AddColumnForm({ table, onOp }: { table: Table; onOp: OpDispatch }) {
 
 // ---------- Indexes ----------
 
-function IndexesSection({ table, onOp }: { table: Table; onOp: OpDispatch }) {
+function IndexesCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [unique, setUnique] = useState(false);
@@ -328,97 +332,107 @@ function IndexesSection({ table, onOp }: { table: Table; onOp: OpDispatch }) {
   };
 
   return (
-    <div className="card-section">
-      <div className="section-head">
+    <section className="card">
+      <header className="card-head">
+        <IconIndex />
         <span className="eyebrow">Indexes</span>
-        <span className="spacer" style={{ flex: 1 }} />
-        <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
-          {open ? 'Cancel' : '+ Index'}
+        <span className="spacer" />
+        <button
+          className="btn btn-icon btn-sm"
+          aria-label={open ? 'Cancel new index' : 'Add index'}
+          title={open ? 'Cancel' : 'Add index'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <IconPlus />
         </button>
-      </div>
+      </header>
 
-      {table.indexes.length === 0 ? (
-        <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-          No indexes on this table.
-        </p>
-      ) : (
-        <div className="table-wrap">
-          <table className="grid">
-            <tbody>
-              {table.indexes.map((idx) => (
-                <tr key={idx.id}>
-                  <td className="cell-name">{idx.name}</td>
-                  <td className="mono muted">({columnNames(idx.columnIds)})</td>
-                  <td style={{ width: 1 }}>{idx.unique && <span className="badge">UNIQUE</span>}</td>
-                  <td className="actions">
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      aria-label={`Drop index ${idx.name}`}
-                      onClick={() => onOp('dropIndex', { tableId: table.id, indexId: idx.id })}
-                    >
-                      Drop
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {open && (
-        <form className="add-form" onSubmit={submit}>
-          <div className="field grow">
-            <label htmlFor={`idx-name-${table.id}`}>Index name</label>
-            <input
-              id={`idx-name-${table.id}`}
-              className="input mono"
-              placeholder="idx_users_email"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="field grow" style={{ flex: 2 }}>
-            <label>Columns</label>
-            <div className="chip-picker">
-              {table.columns.length === 0 && <span className="muted">Add a column first</span>}
-              {table.columns.map((c) => (
+      <div className="card-section">
+        {table.indexes.length === 0 ? (
+          <p className="muted tiny">No indexes on this table.</p>
+        ) : (
+          <ul className="mini-list">
+            {table.indexes.map((idx) => (
+              <li key={idx.id}>
+                <span className="mini-name">{idx.name}</span>
+                <span className="mini-meta mono">({columnNames(idx.columnIds)})</span>
+                {idx.unique && <span className="badge">UNIQUE</span>}
+                <span className="spacer" />
                 <button
-                  key={c.id}
-                  type="button"
-                  className={`chip ${picked.includes(c.id) ? 'on' : ''}`}
-                  aria-pressed={picked.includes(c.id)}
-                  onClick={() =>
-                    setPicked((p) =>
-                      p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]
-                    )
-                  }
+                  className="btn btn-sm btn-icon btn-ghost"
+                  aria-label={`Drop index ${idx.name}`}
+                  title={`Drop index ${idx.name}`}
+                  onClick={() => onOp('dropIndex', { tableId: table.id, indexId: idx.id })}
                 >
-                  {c.name}
+                  <IconTrash />
                 </button>
-              ))}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {open && (
+          <form className="add-form stacked" onSubmit={submit}>
+            <div className="field">
+              <label htmlFor={`idx-name-${table.id}`}>Index name</label>
+              <input
+                id={`idx-name-${table.id}`}
+                className="input mono"
+                placeholder="idx_users_email"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
-          </div>
-          <label className="check">
-            <input type="checkbox" checked={unique} onChange={(e) => setUnique(e.target.checked)} />
-            unique
-          </label>
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={!name.trim() || picked.length === 0}
-          >
-            Add index
-          </button>
-        </form>
-      )}
-    </div>
+            <div className="field">
+              <label>Columns</label>
+              <div className="chip-picker">
+                {table.columns.length === 0 && <span className="muted tiny">Add a column first</span>}
+                {table.columns.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`chip ${picked.includes(c.id) ? 'on' : ''}`}
+                    aria-pressed={picked.includes(c.id)}
+                    onClick={() =>
+                      setPicked((p) =>
+                        p.includes(c.id) ? p.filter((x) => x !== c.id) : [...p, c.id]
+                      )
+                    }
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="btn-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={unique}
+                  onChange={(e) => setUnique(e.target.checked)}
+                />
+                unique
+              </label>
+              <span className="spacer" />
+              <button
+                className="btn btn-primary btn-sm"
+                type="submit"
+                disabled={!name.trim() || picked.length === 0}
+              >
+                Add index
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
 
 // ---------- Constraints ----------
 
-function ConstraintsSection({ table, onOp }: { table: Table; onOp: OpDispatch }) {
+function ConstraintsCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<ConstraintType>('check');
@@ -437,92 +451,94 @@ function ConstraintsSection({ table, onOp }: { table: Table; onOp: OpDispatch })
   };
 
   return (
-    <div className="card-section">
-      <div className="section-head">
+    <section className="card">
+      <header className="card-head">
+        <IconShield />
         <span className="eyebrow">Constraints</span>
-        <span className="spacer" style={{ flex: 1 }} />
-        <button className="btn btn-sm" onClick={() => setOpen((v) => !v)}>
-          {open ? 'Cancel' : '+ Constraint'}
+        <span className="spacer" />
+        <button
+          className="btn btn-icon btn-sm"
+          aria-label={open ? 'Cancel new constraint' : 'Add constraint'}
+          title={open ? 'Cancel' : 'Add constraint'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <IconPlus />
         </button>
+      </header>
+
+      <div className="card-section">
+        {table.constraints.length === 0 ? (
+          <p className="muted tiny">No constraints on this table.</p>
+        ) : (
+          <ul className="mini-list">
+            {table.constraints.map((c) => (
+              <li key={c.id}>
+                <span className="mini-name">{c.name}</span>
+                <span className="badge">{c.type.replace('_', ' ')}</span>
+                <span className="mini-meta mono">{c.definition}</span>
+                <span className="spacer" />
+                <button
+                  className="btn btn-sm btn-icon btn-ghost"
+                  aria-label={`Drop constraint ${c.name}`}
+                  title={`Drop constraint ${c.name}`}
+                  onClick={() => onOp('dropConstraint', { tableId: table.id, constraintId: c.id })}
+                >
+                  <IconTrash />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {open && (
+          <form className="add-form stacked" onSubmit={submit}>
+            <div className="field">
+              <label htmlFor={`con-name-${table.id}`}>Constraint name</label>
+              <input
+                id={`con-name-${table.id}`}
+                className="input mono"
+                placeholder="chk_positive_total"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`con-type-${table.id}`}>Type</label>
+              <select
+                id={`con-type-${table.id}`}
+                className="select"
+                value={type}
+                onChange={(e) => setType(e.target.value as ConstraintType)}
+              >
+                <option value="check">check</option>
+                <option value="foreign_key">foreign key</option>
+                <option value="unique">unique</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor={`con-def-${table.id}`}>Definition</label>
+              <input
+                id={`con-def-${table.id}`}
+                className="input mono"
+                placeholder="total >= 0"
+                value={definition}
+                onChange={(e) => setDefinition(e.target.value)}
+              />
+            </div>
+            <div className="btn-row">
+              <span className="spacer" />
+              <button
+                className="btn btn-primary btn-sm"
+                type="submit"
+                disabled={!name.trim() || !definition.trim()}
+              >
+                Add constraint
+              </button>
+            </div>
+          </form>
+        )}
       </div>
-
-      {table.constraints.length === 0 ? (
-        <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>
-          No constraints on this table.
-        </p>
-      ) : (
-        <div className="table-wrap">
-          <table className="grid">
-            <tbody>
-              {table.constraints.map((c) => (
-                <tr key={c.id}>
-                  <td className="cell-name">{c.name}</td>
-                  <td style={{ width: 1 }}>
-                    <span className="badge">{c.type.replace('_', ' ')}</span>
-                  </td>
-                  <td className="mono muted">{c.definition}</td>
-                  <td className="actions">
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      aria-label={`Drop constraint ${c.name}`}
-                      onClick={() =>
-                        onOp('dropConstraint', { tableId: table.id, constraintId: c.id })
-                      }
-                    >
-                      Drop
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {open && (
-        <form className="add-form" onSubmit={submit}>
-          <div className="field grow">
-            <label htmlFor={`con-name-${table.id}`}>Constraint name</label>
-            <input
-              id={`con-name-${table.id}`}
-              className="input mono"
-              placeholder="chk_positive_total"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`con-type-${table.id}`}>Type</label>
-            <select
-              id={`con-type-${table.id}`}
-              className="select"
-              value={type}
-              onChange={(e) => setType(e.target.value as ConstraintType)}
-            >
-              <option value="check">check</option>
-              <option value="foreign_key">foreign key</option>
-              <option value="unique">unique</option>
-            </select>
-          </div>
-          <div className="field grow" style={{ flex: 2 }}>
-            <label htmlFor={`con-def-${table.id}`}>Definition</label>
-            <input
-              id={`con-def-${table.id}`}
-              className="input mono"
-              placeholder="total >= 0"
-              value={definition}
-              onChange={(e) => setDefinition(e.target.value)}
-            />
-          </div>
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={!name.trim() || !definition.trim()}
-          >
-            Add constraint
-          </button>
-        </form>
-      )}
-    </div>
+    </section>
   );
 }

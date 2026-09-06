@@ -131,6 +131,34 @@ These look identical if you're just comparing names. But they should be treated 
 
 ---
 
+## 14. Diff and merge are one screen, and it isn't a tab
+
+**What I did:** There's no Diff tab and no Merge tab. There's a **Compare & merge** button that opens a sheet over the app: pick a source and a target, see what diverged, resolve whatever conflicts that surfaces, apply. Tabs are down to Schema and History.
+
+**Why:** Diff and merge were never two features. They're the same question asked twice — "what's different between these two branches, and what do I do about it" — and splitting them meant picking your two branches in one tab, then picking the same two again in the next. Worse, they didn't belong in that tab strip at all: Schema and History describe *the branch you're on*, while a comparison is about two branches at once. Putting it on the same rail implied it was another view of the current branch, which it isn't. A button that opens a sheet says what it actually is — a thing you go do, then come back from.
+
+**Tradeoff:** you can't look at a diff and edit the schema side by side, since the sheet covers the app. That's the right call for a merge, which deserves undivided attention, but if this grew a "review someone's proposed change while editing" flow, the sheet would need to become a panel.
+
+---
+
+## 15. Three columns of narrowing scope, instead of one long page
+
+**What I did:** Repository and branches on the left, tables on the current branch in the middle, the selected table on the right. Previously every table on the branch was rendered stacked down one page.
+
+**Why:** Stacking works for three tables and falls apart at twenty — you scroll past everything you don't care about to reach the one you do, and you lose your place every time the page refetches after an edit. Since every edit here is a commit and triggers a refetch, that was constant. A list you pick from keeps the working set on screen and the selection stable across edits. Each column also narrows the scope of the next, which makes "where am I" answerable without reading the breadcrumb.
+
+**Detail worth noting:** table selection lives in the app shell rather than the schema view, so it survives switching to History and back, and falls back to the first table if the selected one was dropped or doesn't exist on the branch you just switched to.
+
+---
+
+## 16. Commit ids are never shown
+
+**What I did:** No hashes anywhere in the UI. History rows are identified by their message, relative time, and branch-ref chips; branches show their name, not their head commit.
+
+**Why:** A hash is a storage detail. In Git you need it because you type it into commands — here there's no command line, nothing accepts a hash as input, and nothing in the UI is addressed by one. Showing a seven-character string next to every row cost attention and bought nothing. `Commit.id` still exists in the API and does real work (React keys, parent pointers, merge-base lookup) — it just isn't the user's business.
+
+---
+
 ## A note on scale
 
 The per-repo, per-commit file layout (#3) keeps writes isolated and avoids one repo's changes touching another's data. It does **not** make this ready for many people, many schemas, or very long history:

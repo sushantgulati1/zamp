@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from './lib/api';
 import type { Commit, Repo, Schema } from './lib/types';
-import { shortId } from './lib/format';
+import { Sidebar } from './components/Sidebar';
 import { SchemaEditor } from './components/SchemaEditor';
-import { DiffView } from './components/DiffView';
-import { MergeView } from './components/MergeView';
 import { HistoryView } from './components/HistoryView';
-import { ConfirmDialog, Toast } from './components/ui';
+import { CompareMerge } from './components/CompareMerge';
+import { Modal, Toast } from './components/ui';
+import {
+  IconChevronRight,
+  IconHistory,
+  IconLogo,
+  IconMerge,
+  IconSchema,
+} from './components/icons';
 import './app.css';
 
-type Tab = 'schema' | 'diff' | 'merge' | 'history';
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'schema', label: 'Schema' },
-  { id: 'diff', label: 'Diff' },
-  { id: 'merge', label: 'Merge' },
-  { id: 'history', label: 'History' },
-];
+type Tab = 'schema' | 'history';
 
 export default function App() {
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -23,14 +23,15 @@ export default function App() {
   const [branch, setBranch] = useState('main');
   const [schema, setSchema] = useState<Schema>({ tables: [] });
   const [log, setLog] = useState<Commit[]>([]);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('schema');
+  const [compareOpen, setCompareOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
 
   const onError = useCallback((message: string) => setError(message), []);
 
-  // ---- Initial load ----
   useEffect(() => {
     api
       .listRepos()
@@ -48,9 +49,9 @@ export default function App() {
     setRepo(next);
     setBranch(next.defaultBranch);
     setTab('schema');
+    setSelectedTableId(null);
   }
 
-  // ---- Branch content, refetched whenever the repo/branch pair changes ----
   const refresh = useCallback(async () => {
     if (!repo) return;
     try {
@@ -72,7 +73,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo?.id, branch]);
 
-  // ---- One HTTP call per edit = one commit (LOW_LEVEL_DESIGN.md §6) ----
+  // Keep a table selected whenever there is one to select: default to the first,
+  // and fall back if the selected table no longer exists on this branch.
+  useEffect(() => {
+    if (schema.tables.length === 0) {
+      setSelectedTableId(null);
+      return;
+    }
+    setSelectedTableId((current) =>
+      current && schema.tables.some((t) => t.id === current) ? current : schema.tables[0].id
+    );
+  }, [schema]);
+
+  // One HTTP call per edit = one commit (LOW_LEVEL_DESIGN.md §6).
   const handleOp = useCallback(
     async (op: string, payload: unknown) => {
       if (!repo) return;
@@ -91,6 +104,19 @@ export default function App() {
       const created = await api.createRepo(name);
       setRepos((prev) => [...prev, created]);
       selectRepo(created);
+    } catch (e) {
+      onError((e as ApiError).message);
+    }
+  };
+
+  const deleteRepo = async () => {
+    if (!repo) return;
+    try {
+      await api.deleteRepo(repo.id);
+      const list = await api.listRepos();
+      setRepos(list);
+      if (list.length) selectRepo(list[0]);
+      else setRepo(null);
     } catch (e) {
       onError((e as ApiError).message);
     }
@@ -120,90 +146,136 @@ export default function App() {
     }
   };
 
-  const deleteRepo = async () => {
-    if (!repo) return;
-    try {
-      await api.deleteRepo(repo.id);
-      const list = await api.listRepos();
-      setRepos(list);
-      if (list.length) selectRepo(list[0]);
-      else setRepo(null);
-    } catch (e) {
-      onError((e as ApiError).message);
-    }
-  };
-
   const branchNames = repo?.branches.map((b) => b.name) ?? [];
+  const isDefault = repo ? branch === repo.defaultBranch : false;
 
   return (
     <div className="shell">
-      <TopBar
-        repos={repos}
-        repo={repo}
-        onSelect={(id) => {
-          const next = repos.find((r) => r.id === id);
-          if (next) selectRepo(next);
-        }}
-        onCreate={createRepo}
-        onDelete={deleteRepo}
-      />
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">
+            <IconLogo />
+          </span>
+          <span className="brand-text">
+            <span className="brand-name">Graft</span>
+            <span className="brand-sub">Schema control</span>
+          </span>
+        </div>
+        {repo && (
+          <>
+            <span className="topbar-sep" />
+            <nav className="crumbs" aria-label="Breadcrumb">
+              <span className="crumb muted">Workspace</span>
+              <IconChevronRight size={13} />
+              <span className="crumb current mono">{repo.name}</span>
+            </nav>
+          </>
+        )}
+      </header>
 
       {!repo ? (
         <Landing booting={booting} onCreate={createRepo} />
       ) : (
         <div className="body">
           <Sidebar
+            repos={repos}
             repo={repo}
             branch={branch}
-            onSwitch={setBranch}
-            onCreate={createBranch}
-            onDelete={deleteBranch}
+            onSelectRepo={(id) => {
+              const next = repos.find((r) => r.id === id);
+              if (next) selectRepo(next);
+            }}
+            onCreateRepo={createRepo}
+            onDeleteRepo={deleteRepo}
+            onSwitchBranch={setBranch}
+            onCreateBranch={createBranch}
+            onDeleteBranch={deleteBranch}
           />
 
           <main className="main">
-            <nav className="tabs">
-              {TABS.map((t) => (
+            <div className="main-head">
+              <nav className="crumbs" aria-label="Breadcrumb">
+                <span className="crumb muted mono">{repo.name}</span>
+                <IconChevronRight size={13} />
+                <span className="crumb muted">branches</span>
+                <IconChevronRight size={13} />
+                <span className="crumb current mono">{branch}</span>
+              </nav>
+
+              <div className="title-row">
+                <h1 className="mono">{branch}</h1>
+                {isDefault && <span className="badge badge-pk">default</span>}
+                <span className="spacer" />
                 <button
-                  key={t.id}
-                  className={`tab ${tab === t.id ? 'active' : ''}`}
-                  aria-current={tab === t.id ? 'page' : undefined}
-                  onClick={() => setTab(t.id)}
+                  className="btn btn-primary"
+                  onClick={() => setCompareOpen(true)}
+                  disabled={branchNames.length < 2}
+                  title={
+                    branchNames.length < 2
+                      ? 'Create a second branch to compare against'
+                      : 'Compare and merge branches'
+                  }
                 >
-                  {t.label}
+                  <IconMerge />
+                  Compare &amp; merge
                 </button>
-              ))}
-            </nav>
+              </div>
+
+              <p className="title-meta">
+                {schema.tables.length} {schema.tables.length === 1 ? 'table' : 'tables'}
+                <span aria-hidden="true"> · </span>
+                {log.length} {log.length === 1 ? 'commit' : 'commits'}
+              </p>
+
+              <nav className="tabs">
+                <button
+                  className={`tab ${tab === 'schema' ? 'active' : ''}`}
+                  aria-current={tab === 'schema' ? 'page' : undefined}
+                  onClick={() => setTab('schema')}
+                >
+                  <IconSchema />
+                  Schema
+                </button>
+                <button
+                  className={`tab ${tab === 'history' ? 'active' : ''}`}
+                  aria-current={tab === 'history' ? 'page' : undefined}
+                  onClick={() => setTab('history')}
+                >
+                  <IconHistory />
+                  History
+                </button>
+              </nav>
+            </div>
 
             <div className="content">
-              {tab === 'schema' && (
-                <SchemaEditor schema={schema} branch={branch} onOp={handleOp} />
-              )}
-              {tab === 'diff' && (
-                <DiffView
-                  repoId={repo.id}
-                  branches={branchNames}
-                  current={branch}
-                  onError={onError}
+              {tab === 'schema' ? (
+                <SchemaEditor
+                  schema={schema}
+                  branch={branch}
+                  selectedTableId={selectedTableId}
+                  onSelectTable={setSelectedTableId}
+                  onOp={handleOp}
                 />
-              )}
-              {tab === 'merge' && (
-                <MergeView
-                  repoId={repo.id}
-                  branches={branchNames}
-                  current={branch}
-                  onError={onError}
-                  onMerged={(message) => {
-                    setNotice(message);
-                    void refresh();
-                  }}
-                />
-              )}
-              {tab === 'history' && (
+              ) : (
                 <HistoryView log={log} branch={branch} branches={repo.branches} />
               )}
             </div>
           </main>
         </div>
+      )}
+
+      {compareOpen && repo && (
+        <CompareMerge
+          repoId={repo.id}
+          branches={branchNames}
+          current={branch}
+          onClose={() => setCompareOpen(false)}
+          onError={onError}
+          onMerged={(message) => {
+            setNotice(message);
+            void refresh();
+          }}
+        />
       )}
 
       {error && <Toast message={error} onDismiss={() => setError(null)} />}
@@ -220,197 +292,14 @@ function NoticeToast({ message, onDismiss }: { message: string; onDismiss: () =>
   }, [message, onDismiss]);
 
   return (
-    <div
-      className="toast"
-      role="status"
-      style={{
-        background: 'var(--add-soft)',
-        borderColor: 'var(--add-line)',
-        color: 'var(--add)',
-      }}
-    >
-      <span style={{ flex: 1 }}>{message}</span>
+    <div className="toast toast-ok" role="status">
+      <span className="grow">{message}</span>
     </div>
   );
 }
 
-// ---------- Top bar ----------
-
-function TopBar({
-  repos,
-  repo,
-  onSelect,
-  onCreate,
-  onDelete,
-}: {
-  repos: Repo[];
-  repo: Repo | null;
-  onSelect: (id: string) => void;
-  onCreate: (name: string) => void;
-  onDelete: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-
-  const promptNew = () => {
-    const name = window.prompt('Name for the new schema repository');
-    if (name?.trim()) onCreate(name.trim());
-  };
-
-  return (
-    <>
-      <header className="topbar">
-        <div className="brand">
-          Strata <small>schema version control</small>
-        </div>
-
-        {repos.length > 0 && (
-          <>
-            <div className="topbar-sep" />
-            <select
-              className="select mono"
-              aria-label="Repository"
-              value={repo?.id ?? ''}
-              onChange={(e) => onSelect(e.target.value)}
-            >
-              {repos.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-
-        <span className="spacer" />
-
-        {repo && (
-          <button className="btn btn-sm" onClick={() => setConfirming(true)}>
-            Delete repo
-          </button>
-        )}
-        <button className="btn btn-sm" onClick={promptNew}>
-          + New repo
-        </button>
-      </header>
-
-      {confirming && repo && (
-        <ConfirmDialog
-          title="Delete repository"
-          message={
-            <>
-              Permanently delete <strong className="mono">{repo.name}</strong>, including every
-              branch and all commit history? This cannot be undone.
-            </>
-          }
-          confirmLabel="Delete repository"
-          onConfirm={() => {
-            setConfirming(false);
-            onDelete();
-          }}
-          onCancel={() => setConfirming(false)}
-        />
-      )}
-    </>
-  );
-}
-
-// ---------- Sidebar ----------
-
-function Sidebar({
-  repo,
-  branch,
-  onSwitch,
-  onCreate,
-  onDelete,
-}: {
-  repo: Repo;
-  branch: string;
-  onSwitch: (name: string) => void;
-  onCreate: (name: string, from: string) => void;
-  onDelete: (name: string) => void;
-}) {
-  const [name, setName] = useState('');
-  const [confirming, setConfirming] = useState<string | null>(null);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    onCreate(name.trim(), branch);
-    setName('');
-  };
-
-  return (
-    <aside className="sidebar">
-      <div className="sidebar-head">
-        <span className="eyebrow">Branches</span>
-        <span className="badge">{repo.branches.length}</span>
-      </div>
-
-      <ul className="branch-list">
-        {repo.branches.map((b) => (
-          <li key={b.name} className={`branch-item ${b.name === branch ? 'active' : ''}`}>
-            <button className="branch-btn" onClick={() => onSwitch(b.name)}>
-              <span className="name">
-                {b.name}
-                {b.name === repo.defaultBranch && ' *'}
-              </span>
-              <span className="head">{shortId(b.headCommitId)}</span>
-            </button>
-            {b.name !== repo.defaultBranch && (
-              <button
-                className="btn btn-sm btn-ghost"
-                aria-label={`Delete branch ${b.name}`}
-                title="Delete branch"
-                onClick={() => setConfirming(b.name)}
-              >
-                ×
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <form className="sidebar-form" onSubmit={submit}>
-        <label className="eyebrow" htmlFor="new-branch">
-          New branch from <span className="mono">{branch}</span>
-        </label>
-        <input
-          id="new-branch"
-          className="input mono"
-          placeholder="add-billing"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button className="btn" type="submit" disabled={!name.trim()}>
-          Create branch
-        </button>
-      </form>
-
-      {confirming && (
-        <ConfirmDialog
-          title="Delete branch"
-          message={
-            <>
-              Delete <strong className="mono">{confirming}</strong>? Its commits stay on disk, but
-              the branch pointer is removed.
-            </>
-          }
-          confirmLabel="Delete branch"
-          onConfirm={() => {
-            const target = confirming;
-            setConfirming(null);
-            onDelete(target);
-          }}
-          onCancel={() => setConfirming(null)}
-        />
-      )}
-    </aside>
-  );
-}
-
-// ---------- Landing ----------
-
 function Landing({ booting, onCreate }: { booting: boolean; onCreate: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
 
   if (booting) {
@@ -424,30 +313,56 @@ function Landing({ booting, onCreate }: { booting: boolean; onCreate: (name: str
   return (
     <div className="landing">
       <div className="landing-card">
-        <span className="eyebrow">Get started</span>
+        <span className="landing-mark">
+          <IconLogo size={34} />
+        </span>
         <h2>Create a schema repository</h2>
         <p>
-          A repository starts with an empty <span className="mono">main</span> branch. Build a schema
-          on it, branch to try something out, then diff and merge the two.
+          A repository starts with an empty <span className="mono">main</span> branch. Build a
+          schema on it, branch to try something out, then compare and merge the two.
         </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) onCreate(name.trim());
-          }}
-        >
-          <input
-            className="input mono"
-            placeholder="billing-db"
-            aria-label="Repository name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
-            Create
-          </button>
-        </form>
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
+          Create repository
+        </button>
       </div>
+
+      {open && (
+        <Modal title="New repository" onClose={() => setOpen(false)}>
+          <p>
+            Starts with an empty <span className="mono">main</span> branch.
+          </p>
+          <form
+            className="stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (name.trim()) {
+                setOpen(false);
+                onCreate(name.trim());
+              }
+            }}
+          >
+            <div className="field">
+              <label htmlFor="landing-repo-name">Repository name</label>
+              <input
+                id="landing-repo-name"
+                className="input mono"
+                placeholder="billing-db"
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn" type="button" onClick={() => setOpen(false)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
+                Create repository
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

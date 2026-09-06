@@ -1,5 +1,6 @@
 import type { Branch, Commit } from '../lib/types';
-import { formatTime, shortId } from '../lib/format';
+import { formatTime } from '../lib/format';
+import { IconBranch } from './icons';
 
 export function HistoryView({
   log,
@@ -19,65 +20,53 @@ export function HistoryView({
   }
 
   return (
-    <div className="content-inner">
-      <div className="view-head">
+    <div className="history-pane">
+      <div className="pane-head">
         <div>
-          <span className="eyebrow">History</span>
-          <h2>
-            Commits on <span className="mono">{branch}</span>
-          </h2>
-          <p>
-            Every schema edit is its own commit holding a complete snapshot. Merge commits have two
-            parents and are marked accordingly.
-          </p>
+          <h3>History</h3>
+          <span className="tiny muted">
+            {log.length} {log.length === 1 ? 'commit' : 'commits'} reachable from{' '}
+            <span className="mono">{branch}</span>
+          </span>
         </div>
-        <span className="badge">
-          {log.length} {log.length === 1 ? 'commit' : 'commits'}
-        </span>
       </div>
 
       {log.length === 0 ? (
         <div className="empty">No commits yet.</div>
       ) : (
-        <section className="card">
-          <div className="card-section">
-            <div className="timeline">
-              {log.map((c) => {
-                const isMerge = c.parentIds.length > 1;
-                const refs = refsByCommit.get(c.id) ?? [];
-                return (
-                  <article
-                    key={c.id}
-                    className={`commit ${c.id === head ? 'is-head' : ''} ${isMerge ? 'is-merge' : ''}`}
-                  >
-                    <div className="rail">
-                      <span className="node" />
-                    </div>
-                    <div className="detail">
-                      <div className="msg">{c.message}</div>
-                      <div className="meta">
-                        <span className="sha">{shortId(c.id)}</span>
-                        <span>·</span>
-                        <span>{formatTime(c.createdAt)}</span>
-                        <span>·</span>
-                        <span>
-                          {c.schema.tables.length}{' '}
-                          {c.schema.tables.length === 1 ? 'table' : 'tables'}
-                        </span>
-                        {isMerge && <span className="badge badge-conflict">merge</span>}
-                        {refs.map((r) => (
-                          <span key={r} className="badge badge-pk mono">
-                            {r}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+        <div className="timeline">
+          {log.map((c) => {
+            const isMerge = c.parentIds.length > 1;
+            const refs = refsByCommit.get(c.id) ?? [];
+            return (
+              <article
+                key={c.id}
+                className={`commit ${c.id === head ? 'is-head' : ''} ${isMerge ? 'is-merge' : ''}`}
+              >
+                <div className="rail">
+                  <span className="node" />
+                </div>
+                <div className="detail">
+                  <div className="msg">{c.message}</div>
+                  <div className="meta">
+                    <span>{formatTime(c.createdAt)}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {c.schema.tables.length} {c.schema.tables.length === 1 ? 'table' : 'tables'}
+                    </span>
+                    {isMerge && <span className="badge badge-conflict">merge</span>}
+                    {refs.map((r) => (
+                      <span key={r} className="ref-chip">
+                        <IconBranch size={11} />
+                        <span className="mono">{r}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       )}
     </div>
   );

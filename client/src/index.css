@@ -1,10 +1,10 @@
 /* =========================================================================
-   Strata — design tokens and base styles
+   Graft — design tokens and base styles
 
    Two type families carry a deliberate distinction (LOW_LEVEL_DESIGN.md §9):
-   IBM Plex Mono for anything that *is* schema content (table/column names,
-   types, ids, commit hashes), IBM Plex Sans for the tool's own chrome. If a
-   string came out of the user's schema, it should be mono.
+   IBM Plex Mono for anything that *is* schema content (repo, branch, table and
+   column names, types), IBM Plex Sans for the tool's own chrome. If a string
+   came out of the user's schema, it should be mono.
    ========================================================================= */
 
 :root {
@@ -112,6 +112,10 @@ textarea {
   color: var(--ink-3);
 }
 
+.tiny {
+  font-size: 11.5px;
+}
+
 .empty {
   padding: 28px 20px;
   text-align: center;
@@ -120,6 +124,24 @@ textarea {
   background: var(--surface-2);
   border: 1px dashed var(--line-2);
   border-radius: var(--r-md);
+}
+
+/* ---------- Layout utilities ---------- */
+
+/* Pushes whatever follows it to the far end of a flex row. */
+.spacer {
+  flex: 1;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ---------- Buttons ---------- */
@@ -178,6 +200,41 @@ textarea {
 }
 
 .btn-ghost:hover:not(:disabled) {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
+}
+
+/* Square button holding only an icon — keeps the glyph optically centred. */
+.btn-icon {
+  padding: 6px;
+  min-width: 30px;
+}
+
+.btn-icon.btn-sm {
+  padding: 4px;
+  min-width: 24px;
+}
+
+/* Destructive action that is still a deliberate, labelled button. */
+.btn-danger {
+  color: var(--del);
+  border-color: var(--del-line);
+  background: var(--surface);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--del-soft);
+  border-color: var(--del);
+}
+
+.btn-danger-ghost {
+  color: var(--ink-3);
+  border-color: var(--line-2);
+  background: var(--surface);
+}
+
+.btn-danger-ghost:hover:not(:disabled) {
   background: var(--del-soft);
   border-color: var(--del-line);
   color: var(--del);

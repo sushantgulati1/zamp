@@ -1,4 +1,4 @@
-# Spec — Strata: version control for database schemas
+# Spec — Graft: version control for database schemas
 
 ## 1. Problem
 
@@ -48,12 +48,17 @@ Every commit stores a full schema snapshot (not a diff or op-log — see `decisi
 
 | Workflow | Where |
 |---|---|
-| Create/select a repository | Top bar |
-| Create/switch/delete a branch | Left sidebar |
+| Create/select/delete a repository | Left sidebar — repository picker |
+| Create/switch/delete/search a branch | Left sidebar — branch list |
+| Pick a table to work on | Table pane (second column) |
 | Edit schema (tables/columns/indexes/constraints) on the current branch | Schema tab |
-| Compare any two branches structurally | Diff tab |
-| Merge one branch into another, resolving conflicts interactively | Merge tab |
 | View commit history for the current branch | History tab |
+| Compare two branches *and* merge one into the other, resolving conflicts interactively | "Compare & merge" sheet |
+
+The screen is three columns of narrowing scope — repository and branches, then tables on the
+current branch, then the selected table. Comparing and merging is deliberately *not* a tab:
+tabs describe the branch you're on, while a merge is about two branches at once, so it opens
+as a sheet over the app instead (see `decisions.md` #14).
 
 ## 6. API summary
 

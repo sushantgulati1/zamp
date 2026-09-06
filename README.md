@@ -1,4 +1,4 @@
-# Strata — version control for database schemas
+# Graft — version control for database schemas
 
 Git's workflow — branch, diff, merge — applied to a database schema instead of files.
 Branch a schema, evolve it independently on each branch (add/drop/rename/retype columns,
@@ -54,16 +54,17 @@ The merge engine is the point, so the fastest way to see it work:
 
 1. Create a repository — it starts with an empty `main`.
 2. On the **Schema** tab, create a table and add a few columns.
-3. Create a branch in the left sidebar (say `cleanup`).
+3. Create a branch from the left sidebar (say `cleanup`).
 4. Change the *same* column on both branches — e.g. retype `total` to `numeric` on `cleanup`
    and to `bigint` on `main`. Then, on one branch, **drop** a column that you **rename** on the
    other.
-5. **Diff** tab: compare the two branches. The rename reads as a rename, not as a delete plus
-   an unrelated add.
-6. **Merge** tab: merge `cleanup` into `main`. Non-overlapping changes merge silently; the two
+5. Hit **Compare & merge**, with `cleanup` as source and `main` as target. The lower half shows
+   what diverged — the rename reads as a rename, not as a delete plus an unrelated add.
+6. The upper half lists what needs deciding. Non-overlapping changes merge silently; the two
    overlapping ones come up as an `edit/edit` and a `modify/delete` conflict, each with a
-   Base / Source / Target table where only the deciding field is highlighted. Decide both, then
-   apply — you get a merge commit with two parents, visible on the **History** tab.
+   Base / Source / Target table where only the deciding field is highlighted. Decide both
+   (each stays on screen, with an Undo), then apply — you get a merge commit with two parents,
+   visible on the **History** tab.
 
 ## Layout
 
@@ -81,7 +82,8 @@ server/          Express + TypeScript API, no database
 client/          Vite + React SPA, fetch() only
   src/
     lib/           API client, types mirror, formatters
-    components/    SchemaEditor, DiffView, MergeView, HistoryView
+    components/    Sidebar, SchemaEditor, TableCard, HistoryView,
+                   CompareMerge (+ DiffPanel, ConflictCard), icons, ui
 ```
 
 `operations.ts`, `diff.ts` and `merge.ts` are pure and side-effect free. That's what makes the

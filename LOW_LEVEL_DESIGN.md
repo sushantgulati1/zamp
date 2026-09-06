@@ -1,4 +1,4 @@
-# Low-Level Design — Strata
+# Low-Level Design — Graft
 
 ## 1. Architecture overview
 
@@ -162,29 +162,39 @@ Base path: `/api`. All bodies/responses are JSON. Errors: `{ error: string }` wi
 
 ## 8. Frontend architecture
 
-```
-App.tsx                         — repo/branch state, routing between tabs, op dispatch
-├── (TopBar, Sidebar, Landing)  — inline in App.tsx: repo picker, branch list, first-run state
-├── SchemaEditor.tsx            — renders tables for the current branch; "+ New table"
-│   └── TableCard.tsx           — per-table: columns table + inline add/rename/retype/drop
-│                                  controls, indexes list + add form, constraints list + add form
-├── DiffView.tsx                — from/to branch pickers, renders SchemaDiff
-├── MergeView.tsx               — source/target pickers, calls /merge on every resolution
-│   └── ConflictCard            — one conflict: why-text, ConflictTable, resolve buttons
-│       └── ConflictTable       — renders one conflict as a compact field-by-field table
-└── HistoryView.tsx             — commit timeline for the current branch, with branch-ref chips
+The screen is **three columns of narrowing scope** — repository/branches, then tables on the current branch, then the selected table — with compare-and-merge lifted out into a sheet because it concerns two branches rather than the one being edited (see `decisions.md` #14).
 
+```
+App.tsx                         — repo/branch/table selection, tab state, op dispatch
+├── (topbar, Landing)           — inline in App.tsx: brand, breadcrumbs, first-run state
+├── Sidebar.tsx                 — repository picker dropdown, new/delete repo,
+│                                 branch list with search, dots, current/default badges;
+│                                 new repo + new branch are modals, not inline forms
+├── SchemaEditor.tsx            — table pane (search + counts) beside the selected table
+│   └── TableCard.tsx           — the selected table: columns grid with inline
+│                                 rename/retype/nullable/default/PK, then indexes and
+│                                 constraints as side-by-side cards
+├── HistoryView.tsx             — commit timeline for the current branch, with branch-ref chips
+└── CompareMerge.tsx            — the sheet: source/target pickers, merge preview, and diff
+    ├── ConflictCard.tsx        — one conflict: why-text, ConflictTable, resolve buttons
+    └── DiffPanel.tsx           — presentation-only rendering of a SchemaDiff
+
+components/icons.tsx            — inline SVG icon set (branch, merge, trash, table, …)
 components/ui.tsx               — Modal, ConfirmDialog, InlineEdit, Toast
 lib/api.ts                      — fetch wrapper; ApiError carries the server's `{ error }` text
 lib/types.ts                    — hand-maintained mirror of the server's exported shapes
-lib/format.ts                   — formatType / shortId / formatTime / formatValue / fieldLabel
+lib/format.ts                   — formatType / formatTime / formatValue / fieldLabel
 ```
 
-State flow: `App` owns `repo`, `branch`, `schema`, `log` and refetches all three after every operation (`handleOp` → `api.runOp` → `refresh()`). `MergeView` owns its own `resolutions: ResolutionMap` local state and calls `api.mergePreview` (server-side, `apply: false`) after every single resolution change — the server is the single source of truth for merge computation; the client never re-implements the merge algorithm. `api.mergeApply` (`apply: true`) is only enabled once `preview.conflicts.length === 0`.
+State flow: `App` owns `repo`, `branch`, `schema`, `log`, `selectedTableId` and refetches after every operation (`handleOp` → `api.runOp` → `refresh()`). Table selection is held in `App` rather than `SchemaEditor` so it survives a tab switch, and self-heals: if the selected table no longer exists on the current branch, selection falls back to the first table.
 
-Because the server returns only *unresolved* conflicts, `MergeView` also keeps a `seen: Conflict[]` registry of every conflict this branch pair has surfaced, in first-seen order. Cards render from that registry rather than straight from the response, so a conflict stays on screen once decided (marked resolved, with an "Undo decision" control) instead of vanishing at the moment of choice — see `decisions.md` #13. A card is dropped only if it is neither outstanding nor decided, which is how conflicts made moot by an earlier decision disappear. Switching either branch clears both `resolutions` and `seen`, since conflict ids are tied to a specific pair of tips.
+`CompareMerge` owns its own `resolutions: ResolutionMap` and calls `api.mergePreview` (server-side, `apply: false`) after every resolution change — the server is the single source of truth for merge computation; the client never re-implements the merge algorithm. `api.mergeApply` (`apply: true`) is only enabled once `preview.conflicts.length === 0`. It fetches the diff (`target → source`, i.e. "what source brings into target") alongside the preview, so one view answers both halves of the question.
 
-**Naming:** the merge engine speaks `ours`/`theirs`; the UI speaks Target/Source. `ours` is always the **target** branch (merged into) and `theirs` the **source**. That mapping is confined to `lib/types.ts` and `MergeView.tsx`.
+Because the server returns only *unresolved* conflicts, `CompareMerge` also keeps a `seen: Conflict[]` registry of every conflict this branch pair has surfaced, in first-seen order. Cards render from that registry rather than straight from the response, so a conflict stays on screen once decided (marked resolved, with an "Undo decision" control) instead of vanishing at the moment of choice — see `decisions.md` #13. A card is dropped only if it is neither outstanding nor decided, which is how conflicts made moot by an earlier decision disappear. Switching either branch clears both `resolutions` and `seen`, since conflict ids are tied to a specific pair of tips.
+
+**Naming:** the merge engine speaks `ours`/`theirs`; the UI speaks Target/Source. `ours` is always the **target** branch (merged into) and `theirs` the **source**. That mapping is confined to `lib/types.ts` and `ConflictCard.tsx`.
+
+**Commit ids are never rendered.** They're a storage detail, not something a user of this tool identifies a change by — history rows are identified by message, time and branch-ref chips instead. `Commit.id` still exists in the API and is the key for React lists and merge-base lookup.
 
 **Conflict display (`ConflictTable`):** each conflict renders as one table — one row per field on the entity (name, type, nullable, default, etc.), three columns (Base / Source / Target). Rows where all three values match are shown muted, since they're not part of the decision. Only the row(s) captured in the conflict's `fieldsDiffering` are highlighted. A single "keep source" / "keep target" choice below the table applies to the whole entity (see `decisions.md` #5, #12) — the table's job is to make that choice legible at a glance, not to allow per-field picks.
 
