@@ -55,11 +55,19 @@ These look identical if you're just comparing names. But they should be treated 
 
 ---
 
-## 5. When there's a conflict, you pick a whole version — not field by field
+## 5. Conflicts are resolved field by field, not by picking a whole version
 
-**What I did:** If two branches both changed the same column differently, you're shown both full versions and pick one, rather than being asked "keep this field or that field?" for every individual attribute.
+**What I did:** If two branches both changed the same column, the tool compares it *attribute by attribute*. Anything only one branch touched gets merged in automatically. You're only asked about the specific attributes both branches changed to different values — and you decide each one separately.
 
-**Why:** Picking pieces from each version could create something invalid (e.g., mixing values that don't make sense together). Picking one whole version at a time is simpler, always safe, and easier to understand at a glance. (See #12 for how this choice is actually displayed to the person resolving it.)
+**What I did first, and why it was wrong:** the original version showed you both full versions of the column and made you pick one. The reasoning was that mixing attributes from two sides could produce a combination neither branch ever had, and might be invalid — whereas picking one whole side is always something that really existed somewhere.
+
+That reasoning is fine in isolation and disastrous in practice. It means any two edits to the same column collide, *even when they have nothing to do with each other*. Branch A renames `email` to `email_address`; Branch B changes its type to `varchar(500)`. Those two edits don't disagree about anything — but the old tool called it a conflict and made you throw one of them away. That's the normal way two people work on the same table, so nearly every merge conflicted, and every resolution destroyed someone's work. At that point branches stop being worth having, which is the entire product.
+
+So the safety argument had to be answered properly rather than dodged: mixing is now allowed, and a validator (#17) checks the merged result and blocks the merge if a mix produced something invalid. You get the automatic merging *and* the guarantee.
+
+**Tradeoff:** more machinery — a field-level merge, a validator, and a resolve screen with per-attribute controls instead of two buttons. Worth it: the simpler version was simple and useless.
+
+(See #12 for how the choice is presented, and #6 for the one case that's still a whole-entity decision.)
 
 ---
 
@@ -76,6 +84,8 @@ These look identical if you're just comparing names. But they should be treated 
 **What I did:** If both branches changed the same table, the tool looks inside the table and compares column-by-column, instead of treating "this table is different on both sides" as one big conflict.
 
 **Why:** Without this, adding a totally unrelated column on each branch (like Branch A adds `email`, Branch B adds `phone`) would look like a conflict just because the table object changed on both sides — even though nothing actually clashes. Looking inside avoids tons of fake conflicts.
+
+**Where this went:** the same principle now goes one level deeper. Looking inside the table stops "both branches touched this table" being a fake conflict; looking inside the *column* (#5) stops "both branches touched this column" being one too. Same idea, applied until it runs out of levels: never call something a conflict at a level where you can still go down and check.
 
 ---
 
@@ -113,11 +123,15 @@ These look identical if you're just comparing names. But they should be treated 
 
 ---
 
-## 12. Conflicts are shown as a compact diff table, not full duplicated cards
+## 12. Conflicts are shown as a compact diff table — and that table is the control
 
-**What I did:** Each conflict shows one compact table — one row per field, three columns: Base / Source branch / Target branch. Rows where all three match are muted since they're not in question. Only the row(s) that actually differ are highlighted.
+**What I did:** Each conflict shows one compact table — one row per field, three columns: Base / Source branch / Target branch. Rows the merge settled on its own are muted and labelled with *why* they settled ("converged", "only source changed"). Rows where both branches disagree get a source/target pick right there in the row.
 
-**Why:** If a column has 6 fields and only `type` is different, showing two complete versions side by side means scanning through several identical fields to spot the one that matters. Highlighting only what's actually different lets the person resolving the conflict see, at a glance, exactly what their choice affects — instead of doing the comparison themselves. You still pick "keep source" or "keep target" as a whole (see #5), but the table makes that choice easy to reason about.
+**Why:** If a column has 6 fields and only `type` is in dispute, showing two complete versions side by side means scanning several identical fields to find the one that matters. This table shows, at a glance, exactly what's being decided and what isn't.
+
+Originally this table was read-only — an aid for a choice you made elsewhere with two buttons. Once resolution went field by field (#5), the table stopped being an explanation of the choice and became the choice. That's a better arrangement anyway: the decision lands on the row it belongs to instead of on a button underneath a description of the row.
+
+**Worth keeping visible:** the auto-merged rows stay on screen rather than being hidden. They're the evidence that most of the column merged itself — which turns the card from a demand into a report with one or two open questions.
 
 ---
 
@@ -128,6 +142,8 @@ These look identical if you're just comparing names. But they should be treated 
 **Why:** Rendering the server's list directly meant a conflict card disappeared the instant you clicked a choice. That looks like the decision worked, but it leaves you with no way to see what you decided or change your mind — and on a merge with several conflicts, no way to review the set before committing to it. Since resolutions are what the merge is *for*, they should be the most visible thing on the screen, not the thing that vanishes.
 
 **Tradeoff:** the client now holds a little state that mirrors something the server computed, which is exactly the kind of duplication that drifts. It's kept honest by only ever *adding* to the list from server responses and treating the server's response as the authority on what's still outstanding — the client never decides a conflict is resolved on its own.
+
+**Since #5:** this now applies per attribute rather than per card — a decided attribute keeps its row on screen showing what you picked, with Undo on that row. The tradeoff above also went away: the server now sends the full set of things needing a decision separately from the shrinking set of what's still undecided, so the client renders one against the other and doesn't have to remember anything.
 
 ---
 
@@ -156,6 +172,28 @@ These look identical if you're just comparing names. But they should be treated 
 **What I did:** No hashes anywhere in the UI. History rows are identified by their message, relative time, and branch-ref chips; branches show their name, not their head commit.
 
 **Why:** A hash is a storage detail. In Git you need it because you type it into commands — here there's no command line, nothing accepts a hash as input, and nothing in the UI is addressed by one. Showing a seven-character string next to every row cost attention and bought nothing. `Commit.id` still exists in the API and does real work (React keys, parent pointers, merge-base lookup) — it just isn't the user's business.
+
+---
+
+## 17. The merge validator only enforces rules the schema editor already enforces
+
+**What I did:** Because you can now mix attributes from two branches (#5), the merged result gets checked before it can be applied — no duplicate table names, no duplicate column names inside a table, no empty names or types, no index pointing at a column the merge dropped. If any of that fails, the merge is blocked and each problem is a link back to the exact row whose pick caused it, so you can change your mind.
+
+**The rule I held myself to:** the validator checks *exactly* what the ordinary schema editor checks, and nothing more.
+
+**Why that rule matters:** it's tempting to also enforce things that merely seem sensible — like "a primary key column shouldn't be nullable". But the editor lets you do that on a single branch with no merge involved. If the validator enforced it anyway, you could get a merge blocked over a state that each branch was independently allowed to reach, with no way to fix it inside the merge screen. That's a worse failure than the one being fixed: a tool that refuses to merge two legal schemas. So the validator's job is strictly "did mixing produce something the editor would have rejected", never "is this schema good".
+
+**A bug this caught:** every table gets a random permanent ID (#1), so two branches can never independently create *the same* table — they create two different tables that happen to share a name. The merge used to include both, silently producing a schema with two tables called `users`. Nothing caught it before. Now the duplicate-name rule does.
+
+**Tradeoff:** that particular case is a dead end — there's no pick to change, because neither branch did anything wrong on its own. The tool says so plainly and tells you to rename on one branch first. A "rename one of them during the merge" flow would be nicer and is a bigger feature than it looks; reporting it honestly beats offering a button that can't help.
+
+---
+
+## 18. An index's column list is decided as a whole, not column by column
+
+**What I did:** Field-by-field resolution (#5) stops at lists. If two branches both changed which columns an index covers, you pick one branch's list entirely — you don't merge the two lists together.
+
+**Why:** the order of columns in an index is meaningful. An index on `(tenant_id, created_at)` is a genuinely different index from one on `(created_at, tenant_id)` — they speed up different queries. Merging two lists element by element would produce an ordering neither branch asked for, and it would look reasonable while being wrong, which is the worst kind of wrong. A list is one decision, so it gets one choice.
 
 ---
 
