@@ -114,4 +114,15 @@ describe('validate', () => {
     const schema: Schema = { tables: [table(), table({ id: 't2' })] };
     expect(validate(schema, {})[0].conflictIds).toEqual([]);
   });
+
+  it('says what to do instead when no pick can fix a name collision', () => {
+    const schema: Schema = { tables: [table({ columns: [col(), col({ id: 'c2' })] })] };
+    expect(validate(schema, {})[0].message).toContain('rename one of them on a branch');
+  });
+
+  it('does not offer that advice when a pick can fix it', () => {
+    const schema: Schema = { tables: [table({ columns: [col(), col({ id: 'c2' })] })] };
+    const provenance = { 't1:c2:name': 'column:t1:c2:name' };
+    expect(validate(schema, provenance)[0].message).not.toContain('rename one of them');
+  });
 });

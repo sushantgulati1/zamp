@@ -48,6 +48,18 @@ export function validate(schema: Schema, provenance: Provenance): Violation[] {
     return [...byName].filter(([, group]) => group.length > 1);
   }
 
+  /**
+   * A name collision with no pick behind it means both names arrived by
+   * auto-merge — most often because each branch created its own entity. There
+   * is nothing to change on this screen, so the message has to say what to do
+   * instead of leaving a dead end.
+   */
+  function collisionMessage(subject: string, name: string, conflictIds: string[]): string {
+    return conflictIds.length > 0
+      ? `Two ${subject} are named "${name}". Names have to be unique.`
+      : `Two ${subject} are named "${name}". Neither came from a choice you made here, so there is no version to pick between — rename one of them on a branch, then merge.`;
+  }
+
   /** One violation per colliding name group, carrying every pick that fed it. */
   function checkUniqueNames(
     code: ViolationCode,
@@ -56,13 +68,16 @@ export function validate(schema: Schema, provenance: Provenance): Violation[] {
     entities: { id: string; name: string }[]
   ): void {
     for (const [name, group] of collisions(entities)) {
+      const conflictIds = group
+        .map((e) => at(tableId, e.id, 'name'))
+        .filter((c): c is string => !!c);
       violations.push({
         code,
-        message: `Two ${label} in this table are named "${name}". Names have to be unique within a table.`,
+        message: collisionMessage(`${label} in this table`, name, conflictIds),
         tableId,
         entityId: group[0].id,
         field: 'name',
-        conflictIds: group.map((e) => at(tableId, e.id, 'name')).filter((c): c is string => !!c),
+        conflictIds,
       });
     }
   }
@@ -74,12 +89,13 @@ export function validate(schema: Schema, provenance: Provenance): Violation[] {
    */
   function checkUniqueTableNames(tables: Table[]): void {
     for (const [name, group] of collisions(tables)) {
+      const conflictIds = group.map((t) => at(t.id, t.id, 'name')).filter((c): c is string => !!c);
       violations.push({
         code: 'duplicate-table-name',
-        message: `Two tables are named "${name}". Each branch created its own, so there is no version to pick between — rename one of them on a branch, then merge.`,
+        message: collisionMessage('tables', name, conflictIds),
         tableId: group[0].id,
         field: 'name',
-        conflictIds: group.map((t) => at(t.id, t.id, 'name')).filter((c): c is string => !!c),
+        conflictIds,
       });
     }
   }

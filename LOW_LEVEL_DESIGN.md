@@ -27,11 +27,12 @@ No database server, no auth layer, no background jobs. The server is a single Ex
 | `types.ts` | Domain model: `Schema`, `Table`, `Column`, `IndexDef`, `ConstraintDef`, `Repo`, `Branch`, `Commit`. No logic. |
 | `operations.ts` | Pure functions `(schema, params) → newSchema` for every schema edit (`createTable`, `addColumn`, `retypeColumn`, …). Never mutates input. Throws `OpError` for invalid ops (duplicate names, missing tables). |
 | `diff.ts` | `diffSchemas(before, after) → SchemaDiff`. Pure, two-way structural diff keyed by entity `id`. |
-| `merge.ts` | `merge3(base, ours, theirs, resolutions?) → { schema, conflicts }`. The 3-way merge engine (detailed in §4). Pure. |
+| `merge.ts` | `merge3(base, ours, theirs, resolutions?) → { schema, conflicts, entities, provenance }`. The 3-way merge engine, field-level (detailed in §4). Pure. |
+| `validate.ts` | `validate(schema, provenance) → Violation[]`. Checks a merged schema against the invariants `operations.ts` upholds, and nothing else (§4.6). Pure. |
 | `store.ts` | The only module touching disk. Repo/branch/commit CRUD, `findMergeBase` (common-ancestor BFS), `isAncestor` (fast-forward detection). Backed by plain files on disk — see §6 for the layout. |
 | `index.ts` | Express routes. Thin — parses request, calls into the modules above, translates `OpError`/thrown errors into HTTP status codes. |
 
-All of `operations.ts`, `diff.ts`, and `merge.ts` are pure and side-effect free by design — this is what makes them unit-testable without spinning up the server or the store, and what lets the merge engine be called repeatedly (once per conflict-resolution click) without any state to reset.
+All of `operations.ts`, `diff.ts`, `merge.ts`, and `validate.ts` are pure and side-effect free by design — this is what makes them unit-testable without spinning up the server or the store, and what lets the merge engine be called repeatedly (once per conflict-resolution click) without any state to reset.
 
 ## 3. Diff algorithm (`diff.ts`)
 
@@ -49,58 +50,118 @@ This is a two-way diff — no common ancestor involved. It answers "what's diffe
 
 `merge3(base: Schema, ours: Schema, theirs: Schema, resolutions: ResolutionMap = {}) → MergeResult`
 
+The engine recurses until it runs out of levels: schema → table → entity → **field**. Stopping
+one level short is what made the earlier version unusable — see `decisions.md` #5.
+
 ### 4.1 Top level — tables
 
-For every table `id` appearing in any of `base`/`ours`/`theirs`, call `mergeTable(id, base?, ours?, theirs?, resolutions)`, which returns either a merged `Table` or `undefined` (table doesn't survive the merge), plus any conflicts. Collect all surviving tables into the merged schema; collect all conflicts.
+For every table `id` appearing in any of `base`/`ours`/`theirs`, call `mergeTable`, which returns
+either a merged `Table` or `undefined` (the table doesn't survive), plus any conflicts.
 
-### 4.2 `mergeTable` case analysis
+### 4.2 Presence, then content
 
-Given `(base, ours, theirs)` for one table id — each may be present or absent:
-
-| base | ours | theirs | Result |
-|---|---|---|---|
-| absent | present | absent | include ours' version as-is |
-| absent | absent | present | include theirs' version as-is |
-| absent | present | present, equal | include either (identical independent creation) |
-| absent | present | present, differ | **conflict: `add-add`** (kind `table`) |
-| present | absent | absent | table removed on both sides → omit |
-| present | absent | present, unchanged from base | ours' removal wins → omit |
-| present | absent | present, changed from base | **conflict: `modify-delete`**, `deletedSide: "ours"` |
-| present | present, unchanged from base | absent | theirs' removal wins → omit |
-| present | present, changed from base | absent | **conflict: `modify-delete`**, `deletedSide: "theirs"` |
-| present | present | present | **recurse** — see §4.3 |
-
-### 4.3 Present-in-all-three case: field-level / sub-entity recursion
-
-Rather than treating "table differs on both sides" as one atomic conflict, `mergeTable` handles the table's `name` field with the same base/ours/theirs comparison as any other field (only-one-side-changed wins automatically; both-changed-differently → `edit-edit` conflict, kind `table-name`), and separately calls the generic `mergeEntitySet` helper once each for `columns`, `indexes`, and `constraints`. This is what lets "ours adds column A" and "theirs adds column B" to the same table merge with zero conflicts — they're different entity ids, handled independently.
-
-### 4.4 `mergeEntitySet<T>` — shared logic for columns/indexes/constraints
-
-For every entity `id` appearing in any of `base[]`/`ours[]`/`theirs[]` within the table:
+`mergeTable` and `mergeEntitySet` both decide *presence* first, and hand anything still present
+on both sides to `mergeFields`:
 
 | base | ours | theirs | Result |
 |---|---|---|---|
-| absent | present | absent | include ours' version |
-| absent | absent | present | include theirs' version |
-| absent | present | present, equal | include either |
-| absent | present | present, differ | **conflict: `add-add`** |
-| present | absent | absent | omit (removed both sides) |
-| present | absent | present = base | omit (ours' removal wins, theirs never touched it) |
-| present | absent | present ≠ base | **conflict: `modify-delete`**, `deletedSide: "ours"` |
+| absent | present | absent | include ours as-is |
+| absent | absent | present | include theirs as-is |
+| present | absent | absent | omit (removed on both sides) |
+| present | absent | present = base | omit (ours' removal wins; theirs never touched it) |
 | present | present = base | absent | omit (theirs' removal wins) |
+| present | absent | present ≠ base | **conflict: `modify-delete`**, `deletedSide: "ours"` |
 | present | present ≠ base | absent | **conflict: `modify-delete`**, `deletedSide: "theirs"` |
-| present | present | present, ours = theirs | include either (converged or both unchanged) |
-| present | present | present, base = ours ≠ theirs | include theirs (only theirs changed) |
-| present | present | present, base = theirs ≠ ours | include ours (only ours changed) |
-| present | present | present, all three differ | **conflict: `edit-edit`** |
+| any | present | present | **recurse into fields** — §4.3 |
 
-Every conflict object is annotated with `fieldsDiffering` (computed via the same `differingFields` field-walk diff uses) — this is what powers the compact per-field diff table in the UI (see §8), even though the resolution itself is whole-entity, not per-field (see `decisions.md` #5).
+`modify-delete` is the one decision that stays whole-entity: deletion isn't a field, so there is
+nothing to scope it to (`decisions.md` #6). Its resolutions remain `"keep" | "delete"`.
 
-### 4.5 Conflict resolution application
+A table's children are merged by three `mergeEntitySet` calls (`columns`, `indexes`,
+`constraints`), which is what lets "ours adds `email`" and "theirs adds `phone`" merge cleanly —
+different ids, handled independently.
 
-Each conflict has a deterministic `id` string of the form `${kind}:${tableId}:${entityId}` (e.g. `column:3Wx8oQWb7b:gABM6xnmI2`), computed the same way every time `merge3` runs. This lets the caller pass a `resolutions: Record<conflictId, Resolution>` map and get a fully or partially resolved merge back — `merge3` is safe to call repeatedly (once per click in the UI) with the growing resolutions map, and any conflict *not yet* in the map simply reappears in the returned `conflicts` array. The server only permits creating a merge commit when the returned `conflicts` array is empty.
+### 4.3 `mergeFields` — the field-level merge
 
-`Resolution` values: `"ours" | "theirs"` (edit-edit, add-add), `"keep" | "delete"` (modify-delete).
+For each field name across the three sides (`id` excluded — identity is the key, never a merge
+candidate), with base `b`, ours `o`, theirs `t`:
+
+| condition | result |
+|---|---|
+| `o == t` | take it (converged, or neither side touched it) |
+| base entity exists && `b == o` | take theirs (only theirs changed this field) |
+| base entity exists && `b == t` | take ours (only ours changed this field) |
+| otherwise | **conflict, scoped to that field** |
+
+Comparison is `deepEqual` (JSON-string equality), so an absent optional field and an explicitly
+`undefined` one compare equal — the two are indistinguishable in a stored schema. Merged fields
+whose value is `undefined` are left off the entity rather than written as an explicit key, since
+the result goes straight into a commit.
+
+**The base-exists gate matters.** The two middle rows mean "this side didn't change the field",
+which is meaningless without an ancestor. So in an `add-add` a field auto-merges only on exact
+equality — ours creating a column with no default and theirs creating it with `default: 'x'` is
+a real disagreement, not a free merge.
+
+**Arrays are atomic.** `columnIds` on an index or constraint is one field, compared and picked
+whole. Merging element-wise would produce a column *ordering* neither branch chose, and index
+column order is load-bearing (`decisions.md` #18).
+
+`add-add` is in practice unreachable: ids are random, so two branches cannot mint the same one.
+The case people mean by it — both branches creating a `users` table — is two distinct ids
+sharing a name, caught by §4.6 rather than raised as a conflict.
+
+### 4.4 Conflict identity and resolution
+
+| kind | id | resolutions |
+|---|---|---|
+| field conflict | `${kind}:${tableId}:${entityId}:${field}` | `"ours" \| "theirs"` |
+| modify-delete | `${kind}:${tableId}:${entityId}` | `"keep" \| "delete"` |
+
+`ConflictKind` is `table \| column \| index \| constraint`. A table's own `name` goes through
+`mergeFields` like any other field, which is why there is no `table-name` kind.
+
+Ids are computed the same way on every run, so `merge3` is safe to call repeatedly (once per
+click) with a growing resolutions map; a conflict not yet in the map simply reappears. While a
+field conflict is unresolved the engine provisionally emits the `ours` value, so the returned
+schema is always renderable.
+
+There is no free-text or revert-to-base option: every value in a merged schema must be traceable
+to a real commit on one of the two sides.
+
+### 4.5 `entities` and `provenance`
+
+A field conflict carries only scalars, but the resolve card has to render the *whole* entity,
+auto-merged rows included. `MergeResult` therefore also returns:
+
+- **`entities: EntityContext[]`** — one per entity holding at least one conflict, with each
+  side's full value and a per-field `FieldStatus` (`auto` + which side won, or `conflict` + its
+  id). Computed **as if the resolution map were empty**, so it is identical on every call in a
+  merge session. That is what keeps a decided row on screen (`decisions.md` #13) with no
+  client-side state: `entities` is the stable set of cards, `conflicts` the shrinking set of
+  what's still owed.
+- **`provenance: Record<"tableId:entityId:field", conflictId>`** — which pick decided each
+  contested field. Internal; it is stripped at the HTTP layer and surfaces only as
+  `Violation.conflictIds`.
+
+### 4.6 Validation (`validate.ts`)
+
+Field-mixing can produce an entity neither branch had. `validate(schema, provenance)` runs on the
+merged result and `store.applyBlockedReason` refuses the commit unless **both** `conflicts` and
+`validation` are empty.
+
+> The validator enforces exactly the invariants `operations.ts` already enforces, and nothing more.
+
+Any rule beyond that set would block a merge over a state each branch could reach on its own
+through ordinary editing — a worse failure than the one being fixed. Rules: unique table names;
+unique column/index/constraint names within a table; non-empty names, column `type`, constraint
+`definition`; index covers ≥1 column; index/constraint `columnIds` all resolve to a surviving
+column. Deliberately **not** included: `primaryKey ⇒ !nullable`, because `setColumnPrimaryKey`
+doesn't require it.
+
+Each `Violation` carries `conflictIds`, looked up through `provenance`, so the UI links it to the
+row to re-pick. Empty means no pick can fix it — the message says what to change on a branch
+instead.
 
 ## 5. Merge-base lookup (`store.ts: findMergeBase`)
 
@@ -142,7 +203,7 @@ data/
 
 ## 7. API reference
 
-Base path: `/api`. All bodies/responses are JSON. Errors: `{ error: string }` with `400` (bad operation, `OpError`), `404` (repo/branch not found), `409` (merge apply attempted with unresolved conflicts), `500` (unexpected).
+Base path: `/api`. All bodies/responses are JSON. Errors: `{ error: string }` with `400` (bad operation, `OpError`), `404` (repo/branch not found), `409` (merge apply attempted with unresolved conflicts, or with a merged schema that fails validation), `500` (unexpected).
 
 | Method | Path | Body | Response |
 |---|---|---|---|
@@ -156,7 +217,7 @@ Base path: `/api`. All bodies/responses are JSON. Errors: `{ error: string }` wi
 | GET | `/repos/:repoId/branches/:name/log` | — | `Commit[]` (all ancestors, newest first) |
 | POST | `/repos/:repoId/branches/:name/ops/:op` | op-specific, see `OP_HANDLERS` in `index.ts` | `Commit` (201) |
 | GET | `/repos/:repoId/diff?from=&to=` | — | `SchemaDiff` |
-| POST | `/repos/:repoId/merge` | `{ source, target, resolutions?, apply? }` | `MergeResult` (200, or 201 if applied, or 409 if applying with unresolved conflicts) |
+| POST | `/repos/:repoId/merge` | `{ source, target, resolutions?, apply? }` | `{ schema, conflicts, entities, validation, fastForward?, commit? }` (200, or 201 if applied, or 409 if applying while blocked). `provenance` is stripped here. |
 
 `op` values and bodies (see `OP_HANDLERS` map in `server/src/index.ts`): `createTable {name}`, `dropTable {tableId}`, `renameTable {tableId, name}`, `addColumn {tableId, input}`, `dropColumn {tableId, columnId}`, `renameColumn {tableId, columnId, name}`, `retypeColumn {tableId, columnId, input}`, `setColumnNullable {tableId, columnId, nullable}`, `setColumnDefault {tableId, columnId, value}`, `setColumnPrimaryKey {tableId, columnId, pk}`, `addIndex {tableId, input}`, `dropIndex {tableId, indexId}`, `addConstraint {tableId, input}`, `dropConstraint {tableId, constraintId}`.
 
@@ -176,7 +237,7 @@ App.tsx                         — repo/branch/table selection, tab state, op d
 │                                 constraints as side-by-side cards
 ├── HistoryView.tsx             — commit timeline for the current branch, with branch-ref chips
 └── CompareMerge.tsx            — the sheet: source/target pickers, merge preview, and diff
-    ├── ConflictCard.tsx        — one conflict: why-text, ConflictTable, resolve buttons
+    ├── ConflictCard.tsx        — one conflicting entity: the field table with per-row picks
     └── DiffPanel.tsx           — presentation-only rendering of a SchemaDiff
 
 components/icons.tsx            — inline SVG icon set (branch, merge, trash, table, …)
@@ -188,15 +249,22 @@ lib/format.ts                   — formatType / formatTime / formatValue / fiel
 
 State flow: `App` owns `repo`, `branch`, `schema`, `log`, `selectedTableId` and refetches after every operation (`handleOp` → `api.runOp` → `refresh()`). Table selection is held in `App` rather than `SchemaEditor` so it survives a tab switch, and self-heals: if the selected table no longer exists on the current branch, selection falls back to the first table.
 
-`CompareMerge` owns its own `resolutions: ResolutionMap` and calls `api.mergePreview` (server-side, `apply: false`) after every resolution change — the server is the single source of truth for merge computation; the client never re-implements the merge algorithm. `api.mergeApply` (`apply: true`) is only enabled once `preview.conflicts.length === 0`. It fetches the diff (`target → source`, i.e. "what source brings into target") alongside the preview, so one view answers both halves of the question.
+`CompareMerge` owns its own `resolutions: ResolutionMap` and calls `api.mergePreview` (server-side, `apply: false`) after every resolution change — the server is the single source of truth for merge computation; the client never re-implements the merge algorithm. `api.mergeApply` (`apply: true`) is only enabled once `preview.conflicts.length === 0` **and** `preview.validation.length === 0`. It fetches the diff (`target → source`, i.e. "what source brings into target") alongside the preview, so one view answers both halves of the question.
 
-Because the server returns only *unresolved* conflicts, `CompareMerge` also keeps a `seen: Conflict[]` registry of every conflict this branch pair has surfaced, in first-seen order. Cards render from that registry rather than straight from the response, so a conflict stays on screen once decided (marked resolved, with an "Undo decision" control) instead of vanishing at the moment of choice — see `decisions.md` #13. A card is dropped only if it is neither outstanding nor decided, which is how conflicts made moot by an earlier decision disappear. Switching either branch clears both `resolutions` and `seen`, since conflict ids are tied to a specific pair of tips.
+Cards render from `preview.entities`, not from `preview.conflicts`. The server computes `entities` as if no resolutions were supplied (§4.5), so it is the same on every call in a merge session while `conflicts` shrinks as decisions land — which is what keeps a decided row on screen with an Undo instead of vanishing at the moment of choice (`decisions.md` #13). The client holds no registry of its own; `resolutions` is its only merge state, cleared when either branch changes since conflict ids are tied to a specific pair of tips.
 
 **Naming:** the merge engine speaks `ours`/`theirs`; the UI speaks Target/Source. `ours` is always the **target** branch (merged into) and `theirs` the **source**. That mapping is confined to `lib/types.ts` and `ConflictCard.tsx`.
 
 **Commit ids are never rendered.** They're a storage detail, not something a user of this tool identifies a change by — history rows are identified by message, time and branch-ref chips instead. `Commit.id` still exists in the API and is the key for React lists and merge-base lookup.
 
-**Conflict display (`ConflictTable`):** each conflict renders as one table — one row per field on the entity (name, type, nullable, default, etc.), three columns (Base / Source / Target). Rows where all three values match are shown muted, since they're not part of the decision. Only the row(s) captured in the conflict's `fieldsDiffering` are highlighted. A single "keep source" / "keep target" choice below the table applies to the whole entity (see `decisions.md` #5, #12) — the table's job is to make that choice legible at a glance, not to allow per-field picks.
+**Conflict display (`ConflictCard`):** one card per *entity*, driven by an `EntityContext` — a column whose `type` and `default` both clash is one card with two decisions, not two cards. The card is a Base / Source / Target table with a fourth Decision column, and that table **is** the control (`decisions.md` #12):
+
+- a field with `status: 'auto'` is muted and labelled with why it settled — "both agree", "only source changed", "only target changed";
+- a field with `status: 'conflict'` is highlighted and carries its own `Source` / `Target` buttons, replaced after a pick by "kept source/target" plus a per-row Undo.
+
+Keeping the auto rows visible is the point: they show that most of the entity merged unaided, which turns the card from a demand into a report with one or two open questions. A `modify-delete` has no field rows, so it renders instead as the two whole-entity choice cards ("keep the edited version" / "accept the delete").
+
+**Validation display (`ValidationProblems`):** a "What's wrong" section above the cards, listing each `Violation`. Where `conflictIds` is non-empty it renders a "Change the pick" button that scrolls to and flashes the offending row; where it is empty it says "no pick can fix this", and the violation's own message names what has to change on a branch instead. The status banner above already says the merge is blocked, so this section doesn't repeat that headline.
 
 Types in `client/src/lib/types.ts` are a hand-maintained mirror of the server's `types.ts`/`diff.ts`/`merge.ts` exported shapes (see `decisions.md` #10 for why this isn't a shared package).
 
@@ -208,12 +276,16 @@ Ink/stone palette (`--ink #14181c`, `--bg #eceae3`, `--accent #3d5a80` steel blu
 
 **`diff.test.ts`** (6 tests): identical-schema no-op, added table, removed table, added column, rename-vs-drop+add distinction (the key identity test), retype detected as field-level modification.
 
-**`merge.test.ts`** (11 tests):
-- Clean merges: non-overlapping column additions, only-one-side-changed wins, clean drop, index+column combo.
-- Edit/edit: conflict raised on divergent retypes, resolves once a resolution is supplied, identical edits on both sides don't conflict.
-- Modify/delete: conflict raised when one side drops what the other modified; both resolution paths (`delete` removes it, `keep` restores the edited version) verified.
-- Table-level: modify/delete conflict at the whole-table granularity; two independently created tables merge with zero conflicts.
+**`merge.test.ts`** (25 tests):
+- Clean merges: non-overlapping column additions, only-one-side-changed wins, clean drop, index+column combo, two independently created tables.
+- **Field level:** disjoint field edits to one column auto-merge (the headline case); a same-field clash conflicts alone while its siblings still auto-merge; two contested fields on one entity resolve independently; an optional field added by one side is taken; an optional field cleared by one side and left by the other is dropped without an explicit `undefined` key; one side clearing what the other changed conflicts; `add-add` requires exact per-field equality; a table rename clash surfaces as `kind: table, field: name`; `columnIds` is atomic.
+- Modify/delete: conflict raised when one side drops what the other modified; both resolution paths verified.
+- Entity context: auto-merged fields labelled with the winning side; `entities` identical before and after resolving; clean entities omitted; a modify-delete card carries no field rows; provenance maps each contested field to its conflict.
+
+**`validate.test.ts`** (18 tests): one per rule in §4.6, plus — the same column name allowed in two different tables; a table-name collision anchored on the colliding tables rather than the first table; `conflictIds` populated from provenance and empty when no pick can fix it; the message switching to rename-on-a-branch advice in that case; and the guard that a nullable primary key raises **no** violation, since the editor permits it.
+
+**`apply-guard.test.ts`** (4 tests): `applyBlockedReason` permits a clean merge, blocks on outstanding conflicts, blocks on validation violations even with no conflicts left, and reports conflicts first when both are outstanding.
 
 ## 11. Known limitations (see `decisions.md` for the reasoning behind each)
 
-No auth or multi-user concurrency control · file-based storage isolates repos/commits from each other but still has no pagination or indexed queries, so it doesn't scale to many people or very long history · merge-base lookup is simplified (no general LCA) · no rebase/cherry-pick/octopus merge · conflict resolution is whole-entity, not per-field · client/server types are manually kept in sync.
+No auth or multi-user concurrency control · file-based storage isolates repos/commits from each other but still has no pagination or indexed queries, so it doesn't scale to many people or very long history · merge-base lookup is simplified (no general LCA) · no rebase/cherry-pick/octopus merge · a name collision produced by two branches independently creating the same entity is reported but not resolvable in-merge (no rename-during-merge flow) · client/server types are manually kept in sync.
