@@ -20,10 +20,15 @@ export class ApiError extends Error {
   }
 }
 
+// Same-origin `/api` in dev (proxied by Vite) and whenever the client is served
+// from the same domain as the API. Set VITE_API_URL when the API lives on a
+// different origin, e.g. a separate Render service behind its own subdomain.
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE}/api${path}`, {
       ...init,
       headers: init?.body ? { 'content-type': 'application/json' } : undefined,
     });
