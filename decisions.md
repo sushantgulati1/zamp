@@ -59,13 +59,13 @@ These look identical if you're just comparing names. But they should be treated 
 
 **What I did:** If two branches both changed the same column, the tool compares it *attribute by attribute*. Anything only one branch touched gets merged in automatically. You're only asked about the specific attributes both branches changed to different values — and you decide each one separately.
 
-**What I did first, and why it was wrong:** the original version showed you both full versions of the column and made you pick one. The reasoning was that mixing attributes from two sides could produce a combination neither branch ever had, and might be invalid — whereas picking one whole side is always something that really existed somewhere.
+**Alternative considered:** Show both full versions of the column and make you pick one wholesale. The appeal is safety — mixing attributes from two sides could produce a combination neither branch ever had, and might be invalid, whereas picking one whole side is always something that really existed somewhere.
 
-That reasoning is fine in isolation and disastrous in practice. It means any two edits to the same column collide, *even when they have nothing to do with each other*. Branch A renames `email` to `email_address`; Branch B changes its type to `varchar(500)`. Those two edits don't disagree about anything — but the old tool called it a conflict and made you throw one of them away. That's the normal way two people work on the same table, so nearly every merge conflicted, and every resolution destroyed someone's work. At that point branches stop being worth having, which is the entire product.
+**Why I rejected it:** that safety argument is fine in isolation and disastrous in practice. It means any two edits to the same column collide, *even when they have nothing to do with each other*. Branch A renames `email` to `email_address`; Branch B changes its type to `varchar(500)`. Those two edits don't disagree about anything — but whole-version picking calls it a conflict and makes you throw one of them away. That's the normal way two people work on the same table, so nearly every merge would conflict, and every resolution would destroy someone's work. At that point branches stop being worth having, which is the entire product.
 
-So the safety argument had to be answered properly rather than dodged: mixing is now allowed, and a validator (#17) checks the merged result and blocks the merge if a mix produced something invalid. You get the automatic merging *and* the guarantee.
+So the safety argument gets answered properly instead of dodged: mixing is allowed, and a validator (#17) checks the merged result and blocks the merge if a mix produced something invalid. You get the automatic merging *and* the guarantee.
 
-**Tradeoff:** more machinery — a field-level merge, a validator, and a resolve screen with per-attribute controls instead of two buttons. Worth it: the simpler version was simple and useless.
+**Tradeoff:** more machinery — a field-level merge, a validator, and a resolve screen with per-attribute controls instead of two buttons. Worth it: a simpler version would have been simple and useless.
 
 (See #12 for how the choice is presented, and #6 for the one case that's still a whole-entity decision.)
 
@@ -85,7 +85,7 @@ So the safety argument had to be answered properly rather than dodged: mixing is
 
 **Why:** Without this, adding a totally unrelated column on each branch (like Branch A adds `email`, Branch B adds `phone`) would look like a conflict just because the table object changed on both sides — even though nothing actually clashes. Looking inside avoids tons of fake conflicts.
 
-**Where this went:** the same principle now goes one level deeper. Looking inside the table stops "both branches touched this table" being a fake conflict; looking inside the *column* (#5) stops "both branches touched this column" being one too. Same idea, applied until it runs out of levels: never call something a conflict at a level where you can still go down and check.
+**The same principle applies one level deeper:** looking inside the table stops "both branches touched this table" from being a fake conflict; looking inside the *column* (#5) stops "both branches touched this column" from being one too. It's applied until it runs out of levels — never call something a conflict at a level where you can still go down and check.
 
 ---
 
@@ -125,25 +125,23 @@ So the safety argument had to be answered properly rather than dodged: mixing is
 
 ## 12. Conflicts are shown as a compact diff table — and that table is the control
 
-**What I did:** Each conflict shows one compact table — one row per field, three columns: Base / Source branch / Target branch. Rows the merge settled on its own are muted and labelled with *why* they settled ("converged", "only source changed"). Rows where both branches disagree get a source/target pick right there in the row.
+**What I did:** Each conflict shows one compact table — one row per field, three columns: Base / Source branch / Target branch. Rows the merge settled on its own are muted and labelled with *why* they settled ("converged", "only source changed"). Rows where both branches disagree get a source/target pick right there in the row — the table isn't an explanation of a decision made elsewhere, it *is* the decision.
+
+**Alternative considered:** A read-only diff table paired with two buttons underneath ("keep source" / "keep target"). Rejected for the same reason as #5: resolution is field by field, so the decision belongs on the row it describes, not on a button below a summary of several rows at once.
 
 **Why:** If a column has 6 fields and only `type` is in dispute, showing two complete versions side by side means scanning several identical fields to find the one that matters. This table shows, at a glance, exactly what's being decided and what isn't.
-
-Originally this table was read-only — an aid for a choice you made elsewhere with two buttons. Once resolution went field by field (#5), the table stopped being an explanation of the choice and became the choice. That's a better arrangement anyway: the decision lands on the row it belongs to instead of on a button underneath a description of the row.
 
 **Worth keeping visible:** the auto-merged rows stay on screen rather than being hidden. They're the evidence that most of the column merged itself — which turns the card from a demand into a report with one or two open questions.
 
 ---
 
-## 13. A conflict you've decided stays on screen
+## 13. A decided conflict stays on screen, with an Undo
 
-**What I did:** The server only ever returns conflicts that are *still* unresolved — that's what makes "can this merge be applied?" a simple `conflicts.length === 0` check. But the UI keeps its own list of every conflict it has seen for the current pair of branches, so a conflict you just decided stays visible, marked resolved, with an "Undo decision" button.
+**What I did:** Resolution happens at the attribute level (#5), so the server sends two things for a comparison: the full set of attributes that ever needed a decision, and the shrinking set of attributes still undecided. The UI renders one against the other — every attribute that needed a decision keeps a row on screen; once it drops out of the undecided set it's shown resolved, with the pick displayed and an "Undo decision" button. "Can this merge be applied?" is just `stillUndecided.length === 0`.
 
-**Why:** Rendering the server's list directly meant a conflict card disappeared the instant you clicked a choice. That looks like the decision worked, but it leaves you with no way to see what you decided or change your mind — and on a merge with several conflicts, no way to review the set before committing to it. Since resolutions are what the merge is *for*, they should be the most visible thing on the screen, not the thing that vanishes.
+**Alternative considered:** Have the client keep its own list of decided conflicts, adding to it as you resolve each one, since the server only reports what's still outstanding. Rejected — that's state the client would have to mirror and keep honest by hand, when the server already knows the full set and can just send both.
 
-**Tradeoff:** the client now holds a little state that mirrors something the server computed, which is exactly the kind of duplication that drifts. It's kept honest by only ever *adding* to the list from server responses and treating the server's response as the authority on what's still outstanding — the client never decides a conflict is resolved on its own.
-
-**Since #5:** this now applies per attribute rather than per card — a decided attribute keeps its row on screen showing what you picked, with Undo on that row. The tradeoff above also went away: the server now sends the full set of things needing a decision separately from the shrinking set of what's still undecided, so the client renders one against the other and doesn't have to remember anything.
+**Why decided items stay visible at all:** rendering only the outstanding set means a row disappears the instant you make a choice. That looks like the decision worked, but leaves no way to see what you picked or change your mind — and on a merge with several conflicts, no way to review the whole set before committing. Since resolutions are what the merge is *for*, they should be the most visible thing on screen, not the thing that vanishes.
 
 ---
 
@@ -159,9 +157,11 @@ Originally this table was read-only — an aid for a choice you made elsewhere w
 
 ## 15. Three columns of narrowing scope, instead of one long page
 
-**What I did:** Repository and branches on the left, tables on the current branch in the middle, the selected table on the right. Previously every table on the branch was rendered stacked down one page.
+**What I did:** Repository and branches on the left, tables on the current branch in the middle, the selected table on the right.
 
-**Why:** Stacking works for three tables and falls apart at twenty — you scroll past everything you don't care about to reach the one you do, and you lose your place every time the page refetches after an edit. Since every edit here is a commit and triggers a refetch, that was constant. A list you pick from keeps the working set on screen and the selection stable across edits. Each column also narrows the scope of the next, which makes "where am I" answerable without reading the breadcrumb.
+**Alternative considered:** Render every table on the branch stacked down one long page. Works fine for three tables and falls apart at twenty — you scroll past everything you don't care about to reach the one you do, and you lose your place every time the page refetches after an edit. Since every edit here is a commit and triggers a refetch, that would be constant.
+
+**Why:** A list you pick from keeps the working set on screen and the selection stable across edits. Each column also narrows the scope of the next, which makes "where am I" answerable without reading a breadcrumb.
 
 **Detail worth noting:** table selection lives in the app shell rather than the schema view, so it survives switching to History and back, and falls back to the first table if the selected one was dropped or doesn't exist on the branch you just switched to.
 
@@ -183,7 +183,7 @@ Originally this table was read-only — an aid for a choice you made elsewhere w
 
 **Why that rule matters:** it's tempting to also enforce things that merely seem sensible — like "a primary key column shouldn't be nullable". But the editor lets you do that on a single branch with no merge involved. If the validator enforced it anyway, you could get a merge blocked over a state that each branch was independently allowed to reach, with no way to fix it inside the merge screen. That's a worse failure than the one being fixed: a tool that refuses to merge two legal schemas. So the validator's job is strictly "did mixing produce something the editor would have rejected", never "is this schema good".
 
-**A bug this caught:** every table gets a random permanent ID (#1), so two branches can never independently create *the same* table — they create two different tables that happen to share a name. The merge used to include both, silently producing a schema with two tables called `users`. Nothing caught it before. Now the duplicate-name rule does.
+**The case this exists for:** every table gets a random permanent ID (#1), so two branches can never independently create *the same* table — they create two different tables that happen to share a name. Without a check, a naive merge would happily include both, silently producing a schema with two tables called `users`. The duplicate-name rule catches exactly this.
 
 **Tradeoff:** that particular case is a dead end — there's no pick to change, because neither branch did anything wrong on its own. The tool says so plainly and tells you to rename on one branch first. A "rename one of them during the merge" flow would be nicer and is a bigger feature than it looks; reporting it honestly beats offering a button that can't help.
 
