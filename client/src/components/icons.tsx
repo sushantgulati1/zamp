@@ -190,6 +190,79 @@ export function IconClose(props: IconProps) {
   );
 }
 
+/** Two arrows passing in opposite directions — the source/target swap. */
+export function IconSwap(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <path d="M2.75 5.5h10.5" />
+      <path d="M10.5 2.75L13.25 5.5 10.5 8.25" />
+      <path d="M13.25 10.5H2.75" />
+      <path d="M5.5 7.75L2.75 10.5l2.75 2.75" />
+    </svg>
+  );
+}
+
+/** Check inside a ring — the "all good" banner mark. */
+export function IconCheckCircle(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <circle cx="8" cy="8" r="6" />
+      <path d="M5.5 8.25l1.75 1.75 3.25-3.5" />
+    </svg>
+  );
+}
+
+/** Exclamation inside a ring — the "blocked" banner mark. */
+export function IconAlertCircle(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 4.75v3.75" />
+      <path d="M8 10.9v.1" />
+    </svg>
+  );
+}
+
+/** Exclamation inside a triangle — inline "a decision is needed" hint. */
+export function IconWarning(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <path d="M7.15 3.05L2.4 11.2a1 1 0 0 0 .85 1.5h9.5a1 1 0 0 0 .85-1.5L8.85 3.05a1 1 0 0 0-1.7 0z" />
+      <path d="M8 6.25v2.5" />
+      <path d="M8 10.6v.1" />
+    </svg>
+  );
+}
+
+/** `#` — marks an index, matching the change rows. */
+export function IconHash(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <path d="M6.25 2.75l-1 10.5" />
+      <path d="M10.75 2.75l-1 10.5" />
+      <path d="M2.9 5.75h10.4" />
+      <path d="M2.7 10.25h10.4" />
+    </svg>
+  );
+}
+
+/** Horizontal rule with a node on it — the "changes" counter. */
+export function IconChange(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      {props.title && <title>{props.title}</title>}
+      <path d="M2.5 8h2.25" />
+      <circle cx="6.75" cy="8" r="2" />
+      <path d="M8.75 8h4.75" />
+    </svg>
+  );
+}
+
 export function IconArrowRight(props: IconProps) {
   return (
     <svg {...svgProps(props)}>

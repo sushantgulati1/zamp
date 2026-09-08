@@ -104,7 +104,6 @@ function ColumnsCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
                   <th>Name</th>
                   <th>Type</th>
                   <th>Null</th>
-                  <th>Default</th>
                   <th>Key</th>
                   <th />
                 </tr>
@@ -157,22 +156,6 @@ function ColumnsCard({ table, onOp }: { table: Table; onOp: OpDispatch }) {
                           }
                         />
                       </label>
-                    </td>
-                    <td>
-                      <InlineEdit
-                        className="mono muted"
-                        ariaLabel={`Default for ${col.name}`}
-                        hint="set a default"
-                        value={col.default ?? '—'}
-                        onCommit={(next) =>
-                          onOp('setColumnDefault', {
-                            tableId: table.id,
-                            columnId: col.id,
-                            // "—" is the placeholder for "no default"; typing it back clears it.
-                            value: next === '—' ? undefined : next,
-                          })
-                        }
-                      />
                     </td>
                     <td>
                       <label className="check">

@@ -5,7 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { SchemaEditor } from './components/SchemaEditor';
 import { HistoryView } from './components/HistoryView';
 import { CompareMerge } from './components/CompareMerge';
-import { Modal, Toast } from './components/ui';
+import { NameModal, Toast } from './components/ui';
 import {
   IconChevronRight,
   IconHistory,
@@ -267,7 +267,9 @@ export default function App() {
       {compareOpen && repo && (
         <CompareMerge
           repoId={repo.id}
+          repoName={repo.name}
           branches={branchNames}
+          heads={Object.fromEntries(repo.branches.map((b) => [b.name, b.headCommitId]))}
           current={branch}
           onClose={() => setCompareOpen(false)}
           onError={onError}
@@ -300,7 +302,6 @@ function NoticeToast({ message, onDismiss }: { message: string; onDismiss: () =>
 
 function Landing({ booting, onCreate }: { booting: boolean; onCreate: (name: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
 
   if (booting) {
     return (
@@ -327,41 +328,22 @@ function Landing({ booting, onCreate }: { booting: boolean; onCreate: (name: str
       </div>
 
       {open && (
-        <Modal title="New repository" onClose={() => setOpen(false)}>
-          <p>
-            Starts with an empty <span className="mono">main</span> branch.
-          </p>
-          <form
-            className="stack"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (name.trim()) {
-                setOpen(false);
-                onCreate(name.trim());
-              }
-            }}
-          >
-            <div className="field">
-              <label htmlFor="landing-repo-name">Repository name</label>
-              <input
-                id="landing-repo-name"
-                className="input mono"
-                placeholder="billing-db"
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="modal-actions">
-              <button className="btn" type="button" onClick={() => setOpen(false)}>
-                Cancel
-              </button>
-              <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
-                Create repository
-              </button>
-            </div>
-          </form>
-        </Modal>
+        <NameModal
+          title="New repository"
+          label="Repository name"
+          placeholder="billing-db"
+          description={
+            <>
+              Starts with an empty <span className="mono">main</span> branch.
+            </>
+          }
+          confirmLabel="Create repository"
+          onSubmit={(name) => {
+            setOpen(false);
+            onCreate(name);
+          }}
+          onCancel={() => setOpen(false)}
+        />
       )}
     </div>
   );

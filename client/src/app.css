@@ -982,15 +982,19 @@ table.grid .btn-ghost:focus-visible {
   gap: 8px;
 }
 
-/* The compare & merge sheet — a large working surface, not a dialog. */
+/* The compare & merge sheet — a large working surface, not a dialog. It reads
+   as a verdict first (banner, summary), then the evidence (conflicts, changes,
+   result), so the tone of the whole sheet is set by `.tone-ok` / `.tone-bad`. */
 .sheet {
   display: flex;
   flex-direction: column;
-  width: min(1080px, 100%);
-  height: min(88vh, 100%);
-  background: var(--bg);
+  width: min(1000px, 100%);
+  /* Grows with its content up to the viewport, so the quiet states — nothing
+     to merge, a single conflict — don't open a mostly empty window. */
+  max-height: min(90vh, 100%);
+  background: var(--surface);
   border: 1px solid var(--line-2);
-  border-radius: var(--r-lg);
+  border-radius: 14px;
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
@@ -998,44 +1002,158 @@ table.grid .btn-ghost:focus-visible {
 .sheet-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 16px;
-  background: var(--surface);
+  gap: 12px;
+  padding: 15px 20px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
 
-.sheet-head h2 {
+/* Rounded tile holding the sheet's mark; picks up the blocked tone. */
+.sheet-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+
+.sheet.tone-bad .sheet-mark {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
+}
+
+.sheet-titles h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sheet-sub {
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 .sheet-pickers {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
-  padding: 12px 16px;
-  background: var(--surface);
+  padding: 13px 20px;
+  background: var(--surface-2);
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
-.pick-arrow {
-  display: flex;
-  padding-bottom: 7px;
+/* Branch selects read as chips: green for the side giving changes, blue for
+   the side receiving them — the same pairing the conflict choices use. */
+.branch-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 26px 5px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.branch-pill.source {
+  background: var(--add-soft);
+  border-color: var(--add-line);
+  color: var(--add);
+}
+
+.branch-pill.target {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* Caret drawn rather than imaged, so it inherits the chip's tone. */
+.branch-pill::after {
+  content: '';
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -4px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.branch-select {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.branch-select:focus-visible {
+  outline-offset: 3px;
+}
+
+.swap-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
   color: var(--ink-4);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.swap-btn:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+
+.swap-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .sheet-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: 18px 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .sheet-section {
@@ -1056,109 +1174,147 @@ table.grid .btn-ghost:focus-visible {
   font-weight: 600;
 }
 
+.section-note {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+
+/* Provenance strip closing the body: what this review was computed against. */
+.sheet-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
 .sheet-foot {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
-  background: var(--surface);
+  padding: 13px 20px;
+  background: var(--surface-2);
   border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
 
-/* ---------- Diff rendering ---------- */
+/* ---------- Review summary ---------- */
 
-.summary-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+.review-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
 }
 
-.stat {
+.review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.review-head h3 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.review-pill {
+  margin-left: auto;
+  padding: 3px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.review-pill.bad {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
+}
+
+.review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+
+.rstat {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.rstat + .rstat {
+  border-left: 1px solid var(--line);
+}
+
+.rstat-icon {
+  display: flex;
+  color: var(--ink-4);
+}
+
+.rstat.tone-bad .rstat-icon {
+  color: var(--del);
+}
+
+
+.rstat-text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 8px 14px;
-  min-width: 96px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  min-width: 0;
 }
 
-.stat .n {
-  font-family: var(--mono);
-  font-size: 19px;
+.rstat-value {
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 
-.stat.add .n {
-  color: var(--add);
-}
-
-.stat.del .n {
+.rstat.tone-bad .rstat-value {
   color: var(--del);
 }
 
-.stat.mod .n {
-  color: var(--accent);
+
+.rstat-label {
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 
-.stat.conflict .n {
-  color: var(--amber);
-}
+/* ---------- Final schema ---------- */
 
-/* One line of a structural diff, with a gutter marker. */
-.dline {
-  display: flex;
+/* `nullable yes → no` — the before/after pair on a redefined entity. */
+.transition {
+  display: inline-flex;
   align-items: baseline;
-  gap: 9px;
-  padding: 5px 10px;
-  border-left: 2px solid transparent;
+  gap: 4px;
   font-family: var(--mono);
-  font-size: 12.5px;
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
 }
 
-.dline + .dline {
-  margin-top: 2px;
+.transition-label {
+  font-family: var(--sans);
+  color: var(--ink-3);
 }
 
-.dline .sign {
-  font-weight: 700;
-  width: 9px;
-  flex-shrink: 0;
-}
-
-.dline.add {
-  background: var(--add-soft);
-  border-left-color: var(--add-line);
-}
-
-.dline.add .sign {
-  color: var(--add);
-}
-
-.dline.del {
-  background: var(--del-soft);
-  border-left-color: var(--del-line);
-}
-
-.dline.del .sign {
-  color: var(--del);
-}
-
-.dline.mod {
-  background: var(--accent-soft);
-  border-left-color: var(--accent-line);
-}
-
-.dline.mod .sign {
-  color: var(--accent);
-}
-
-.dline .detail {
-  color: var(--ink-2);
+.transition-sep {
+  padding: 0 5px;
+  color: var(--ink-4);
 }
 
 .val {
@@ -1179,7 +1335,179 @@ table.grid .btn-ghost:focus-visible {
 
 .arrow {
   color: var(--ink-4);
-  padding: 0 2px;
+  padding: 0 1px;
+}
+
+.result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.result-table {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.result-table.tone-add {
+  border-color: var(--add-line);
+}
+
+.result-table.tone-del {
+  border-color: var(--del-line);
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-4);
+}
+
+.result-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.result-renamed {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.result-changes {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.result-section + .result-section {
+  border-top: 1px solid var(--line);
+}
+
+.result-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px 5px;
+}
+
+.result-section-icon {
+  display: flex;
+  color: var(--ink-4);
+}
+
+.result-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.result-section-count {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.result-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  min-width: 0;
+}
+
+.result-mark {
+  width: 10px;
+  flex-shrink: 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--ink-4);
+}
+
+/* Name, plus the field transitions when the merge redefines this entity. */
+.result-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.result-row-name {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.result-row-change {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.result-row-meta {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  text-align: right;
+}
+
+.result-row.is-add {
+  background: var(--add-soft);
+  border-color: var(--add-line);
+}
+
+.result-row.is-add .result-mark {
+  color: var(--add);
+}
+
+.result-row.is-mod {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.result-row.is-mod .result-mark {
+  color: var(--accent);
+}
+
+.result-row.is-del {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+}
+
+.result-row.is-del .result-mark {
+  color: var(--del);
+}
+
+.result-row.is-del .result-row-name {
+  color: var(--del);
+  text-decoration: line-through;
+  text-decoration-color: rgb(154 59 52 / 0.45);
+}
+
+.result-none {
+  margin: 0;
+  padding: 0 14px 9px;
+  font-size: 11.5px;
+  color: var(--ink-4);
 }
 
 /* ---------- Banners ---------- */
@@ -1187,19 +1515,28 @@ table.grid .btn-ghost:focus-visible {
 .banner {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 11px 14px;
-  border-radius: var(--r-md);
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
   font-size: 13px;
   border: 1px solid;
 }
 
+.banner-mark {
+  display: flex;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
 .banner .banner-title {
+  font-size: 14.5px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .banner p {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
+  color: var(--ink-2);
   line-height: 1.5;
 }
 
@@ -1207,6 +1544,12 @@ table.grid .btn-ghost:focus-visible {
   background: var(--add-soft);
   border-color: var(--add-line);
   color: var(--add);
+}
+
+.banner.bad {
+  background: var(--del-soft);
+  border-color: var(--del-line);
+  color: var(--del);
 }
 
 .banner.warn {
@@ -1224,7 +1567,7 @@ table.grid .btn-ghost:focus-visible {
 /* ---------- Conflicts ---------- */
 
 .conflict-card {
-  border: 1px solid var(--amber-line);
+  border: 1px solid var(--del-line);
   border-radius: var(--r-lg);
   background: var(--surface);
   overflow: hidden;
@@ -1239,9 +1582,9 @@ table.grid .btn-ghost:focus-visible {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 13px;
-  background: var(--amber-soft);
-  border-bottom: 1px solid var(--amber-line);
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .conflict-card.resolved .conflict-head {
@@ -1250,24 +1593,143 @@ table.grid .btn-ghost:focus-visible {
 }
 
 .conflict-path {
-  font-family: var(--mono);
   font-size: 13px;
   font-weight: 600;
 }
 
+.conflict-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
 .conflict-body {
-  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+/* States the ask in one line, and flips to a receipt once decided. */
+.conflict-hint {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid var(--del-line);
+  border-radius: var(--r-md);
+  background: var(--del-soft);
+  color: var(--del);
+  font-size: 12.5px;
+}
+
+.conflict-hint.ok {
+  border-color: var(--add-line);
+  background: var(--add-soft);
+  color: var(--add);
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+/* The whole version is the target — a card, not a button beneath a table. */
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow 0.12s ease,
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.choice.source {
+  background: var(--add-soft);
+  border-color: var(--add-line);
+}
+
+.choice.target {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.choice-side {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.choice.source .choice-side {
+  color: var(--add);
+}
+
+.choice.target .choice-side {
+  color: var(--accent);
+}
+
+.choice-tick {
+  margin-left: auto;
+}
+
+.choice-value {
+  font-size: 14px;
+  color: var(--ink);
+}
+
+
+.choice-act {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.choice:hover {
+  border-color: var(--line-strong);
+}
+
+.choice.source.picked {
+  box-shadow: 0 0 0 2px var(--add);
+}
+
+.choice.target.picked {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.choice.dimmed {
+  opacity: 0.5;
+}
+
+.choice.dimmed:hover {
+  opacity: 0.75;
 }
 
 .conflict-why {
-  margin: 0 0 10px;
+  margin: 10px 0;
   font-size: 12.5px;
   color: var(--ink-2);
   line-height: 1.5;
 }
 
-/* Base / Source / Target comparison — rows that match across all three are
-   muted so the eye lands on the field the decision actually turns on. */
+/* Base / Source / Target comparison. Fields the merge settled by itself are
+   muted and labelled with why; the ones both branches moved carry the pick,
+   so the decision lands on the row it belongs to (decisions.md #12). */
 table.ctable {
   width: 100%;
   border-collapse: collapse;
@@ -1324,10 +1786,93 @@ table.ctable tr.differs td {
   font-weight: 500;
 }
 
-/* The chosen side gets a tinted column so the pick stays visible while scanning. */
+/* The chosen side gets a tinted cell so the pick stays visible while scanning. */
 table.ctable td.chosen {
   background: var(--add-soft);
   box-shadow: inset 2px 0 0 var(--add-line);
+}
+
+table.ctable th.decide,
+table.ctable td.decide {
+  width: 152px;
+  text-align: right;
+  font-family: var(--sans);
+  white-space: nowrap;
+}
+
+/* A settled field states which side won and then gets out of the way. */
+.auto-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+.row-picks {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.row-decided {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--add);
+  font-weight: 600;
+}
+
+.pick-source:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.pick-target:hover {
+  border-color: var(--add-line);
+  color: var(--add);
+}
+
+/* A row a validation error points at, and the flash when you jump to it. */
+table.ctable tr.flagged td {
+  background: var(--del-soft);
+}
+
+table.ctable tr.flash td,
+.conflict-card.flash {
+  animation: flash 1.4s ease-out;
+}
+
+@keyframes flash {
+  0%, 40% { background: var(--amber-soft); }
+  100% { background: transparent; }
+}
+
+/* ---------- Validation ---------- */
+
+.violation-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.violation-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--del-line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.violation-list li > span:first-child {
+  flex: 1;
 }
 
 .absent {
@@ -1335,33 +1880,6 @@ table.ctable td.chosen {
   font-style: italic;
   font-family: var(--sans);
   font-size: 12px;
-}
-
-.resolve-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 11px;
-  padding-top: 11px;
-  border-top: 1px solid var(--line);
-}
-
-.resolve-row .label {
-  font-size: 12px;
-  color: var(--ink-3);
-  margin-right: 2px;
-}
-
-.btn.picked {
-  background: var(--add);
-  border-color: var(--add);
-  color: #fff;
-}
-
-.btn.picked:hover:not(:disabled) {
-  background: #365c3b;
-  border-color: #365c3b;
 }
 
 /* ---------- History ---------- */

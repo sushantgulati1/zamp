@@ -94,7 +94,7 @@ export interface SchemaDiff {
 
 // ---- Merge ----
 
-export type ConflictKind = 'table' | 'table-name' | 'column' | 'index' | 'constraint';
+export type ConflictKind = 'table' | 'column' | 'index' | 'constraint';
 export type ConflictReason = 'add-add' | 'edit-edit' | 'modify-delete';
 
 /**
@@ -106,21 +106,69 @@ export type Resolution = 'ours' | 'theirs' | 'keep' | 'delete';
 export type ResolutionMap = Record<string, Resolution>;
 
 export interface Conflict {
+  /** `kind:tableId:entityId:field`, or without the field for a modify-delete. */
   id: string;
   kind: ConflictKind;
   reason: ConflictReason;
   tableId: string;
   entityId: string;
+  /** Set on field conflicts; `base`/`ours`/`theirs` are then that field's values. */
+  field?: string;
   base?: unknown;
   ours?: unknown;
   theirs?: unknown;
   deletedSide?: 'ours' | 'theirs';
-  fieldsDiffering?: string[];
+}
+
+/** Why a field ended up with the value it did — one row of the resolve table. */
+export type FieldStatus =
+  | { status: 'auto'; won: 'converged' | 'ours' | 'theirs' }
+  | { status: 'conflict'; conflictId: string };
+
+/**
+ * One card on the resolve screen. Computed server-side as if no resolutions
+ * were supplied, so this list is stable for the whole merge session: a decided
+ * row stays on screen (decisions.md #13) without the client remembering it.
+ */
+export interface EntityContext {
+  key: string;
+  kind: ConflictKind;
+  tableId: string;
+  entityId: string;
+  tableName: string;
+  entityName: string;
+  base?: unknown;
+  ours?: unknown;
+  theirs?: unknown;
+  fields: Record<string, FieldStatus>;
+}
+
+export type ViolationCode =
+  | 'duplicate-table-name'
+  | 'duplicate-column-name'
+  | 'duplicate-index-name'
+  | 'duplicate-constraint-name'
+  | 'empty-name'
+  | 'empty-type'
+  | 'empty-definition'
+  | 'index-no-columns'
+  | 'dangling-column-ref';
+
+export interface Violation {
+  code: ViolationCode;
+  message: string;
+  tableId: string;
+  entityId?: string;
+  field?: string;
+  /** Field conflicts whose picks produced this. Empty = no pick can fix it. */
+  conflictIds: string[];
 }
 
 export interface MergeResult {
   schema: Schema;
   conflicts: Conflict[];
+  entities: EntityContext[];
+  validation: Violation[];
   fastForward?: boolean;
   commit?: Commit;
 }

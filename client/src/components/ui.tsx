@@ -13,8 +13,17 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Mount only. Keeping this out of the Escape effect below matters: callers
+  // routinely pass an inline `onClose`, so that effect re-runs on every parent
+  // render — and a re-run here would yank focus out of whatever the user is
+  // typing into and back onto the dialog, one character in.
   useEffect(() => {
-    ref.current?.focus();
+    const node = ref.current;
+    // Don't fight content that has already claimed focus via `autoFocus`.
+    if (node && !node.contains(document.activeElement)) node.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -64,6 +73,66 @@ export function ConfirmDialog({
           {confirmLabel}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * Single-field creation dialog, shared by "new repository" and "new branch"
+ * so the two can't drift apart. Owns the draft name itself — keeping that state
+ * here rather than in each caller is also what stops a caller's inline
+ * `onCancel` from being recreated on every keystroke.
+ */
+export function NameModal({
+  title,
+  label,
+  placeholder,
+  description,
+  confirmLabel,
+  onSubmit,
+  onCancel,
+}: {
+  title: string;
+  label: string;
+  placeholder: string;
+  description: ReactNode;
+  confirmLabel: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const inputId = `name-modal-${title.replace(/\W+/g, '-').toLowerCase()}`;
+
+  return (
+    <Modal title={title} onClose={onCancel}>
+      <p>{description}</p>
+      <form
+        className="stack"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) onSubmit(name.trim());
+        }}
+      >
+        <div className="field">
+          <label htmlFor={inputId}>{label}</label>
+          <input
+            id={inputId}
+            className="input mono"
+            placeholder={placeholder}
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
+            {confirmLabel}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

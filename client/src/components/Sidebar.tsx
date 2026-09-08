@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Repo } from '../lib/types';
-import { ConfirmDialog, Modal } from './ui';
+import { ConfirmDialog, NameModal } from './ui';
 import { IconBranch, IconChevronDown, IconDatabase, IconDot, IconPlus, IconSearch, IconTrash } from './icons';
 
 /**
@@ -274,59 +274,5 @@ export function Sidebar({
         />
       )}
     </aside>
-  );
-}
-
-/** Shared single-field creation dialog for repos and branches. */
-function NameModal({
-  title,
-  label,
-  placeholder,
-  description,
-  confirmLabel,
-  onSubmit,
-  onCancel,
-}: {
-  title: string;
-  label: string;
-  placeholder: string;
-  description: React.ReactNode;
-  confirmLabel: string;
-  onSubmit: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState('');
-
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p>{description}</p>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) onSubmit(name.trim());
-        }}
-      >
-        <div className="field">
-          <label htmlFor="name-modal-input">{label}</label>
-          <input
-            id="name-modal-input"
-            className="input mono"
-            placeholder={placeholder}
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="modal-actions">
-          <button className="btn" type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="btn btn-primary" type="submit" disabled={!name.trim()}>
-            {confirmLabel}
-          </button>
-        </div>
-      </form>
-    </Modal>
   );
 }
