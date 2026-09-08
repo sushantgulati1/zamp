@@ -228,7 +228,11 @@ app.post(
       (resolutions ?? {}) as ResolutionMap,
       Boolean(apply)
     );
-    res.status(commit ? 201 : 200).json({ ...result, commit });
+    // `provenance` is the internal join key between a merged field and the pick
+    // that decided it; the client only needs where it already surfaced, on
+    // `validation[].conflictIds`.
+    const { provenance: _provenance, ...body } = result;
+    res.status(commit ? 201 : 200).json({ ...body, commit });
   })
 );
 

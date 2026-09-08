@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { generateId } from './id.js';
 import type { Repo, Branch, Commit, Schema } from './types.js';
-import { merge3, type ResolutionMap, type MergeResult } from './merge.js';
+import { merge3, type Conflict, type ResolutionMap, type MergeResult } from './merge.js';
+import { validate, type Violation } from './validate.js';
 
 export class NotFoundError extends Error {}
 export class ValidationError extends Error {}
@@ -238,7 +239,32 @@ export async function isAncestor(repoId: string, ancestorId: string, descendantI
 }
 
 export interface MergePreview extends MergeResult {
+  validation: Violation[];
   fastForward?: boolean;
+}
+
+/** A merge with nothing to merge — identical heads, or a fast-forward. */
+function cleanPreview(schema: Schema, fastForward?: boolean): MergePreview {
+  return { schema, conflicts: [], entities: [], provenance: {}, validation: [], fastForward };
+}
+
+/**
+ * The single statement of when a merge may be committed. Conflicts block it
+ * because a decision is still owed; violations block it because field-level
+ * resolution (decisions.md #5) can combine two sides into something the schema
+ * editor would have rejected. Returns `undefined` when the merge may proceed.
+ */
+export function applyBlockedReason(
+  conflicts: Conflict[],
+  validation: Violation[]
+): string | undefined {
+  if (conflicts.length > 0) return 'Cannot apply merge: unresolved conflicts remain';
+  if (validation.length > 0) {
+    return `Cannot apply merge: the resolved schema is not valid — ${validation
+      .map((v) => v.message)
+      .join(' ')}`;
+  }
+  return undefined;
 }
 
 export async function mergeBranches(
@@ -254,7 +280,7 @@ export async function mergeBranches(
 
   if (sourceBranch.headCommitId === targetBranch.headCommitId) {
     const schema = await getBranchSchema(repoId, target);
-    return { result: { schema, conflicts: [] } };
+    return { result: cleanPreview(schema) };
   }
 
   if (await isAncestor(repoId, targetBranch.headCommitId, sourceBranch.headCommitId)) {
@@ -266,7 +292,7 @@ export async function mergeBranches(
         branches.map((b) => (b.name === target ? { ...b, headCommitId: sourceBranch.headCommitId } : b))
       );
     }
-    return { result: { schema: sourceSchema, conflicts: [], fastForward: true } };
+    return { result: cleanPreview(sourceSchema, true) };
   }
 
   const baseCommitId = await findMergeBase(repoId, sourceBranch.headCommitId, targetBranch.headCommitId);
@@ -276,13 +302,16 @@ export async function mergeBranches(
     readCommit(repoId, sourceBranch.headCommitId),
   ]);
 
-  const result = merge3(baseCommit.schema, oursCommit.schema, theirsCommit.schema, resolutions);
+  const merged = merge3(baseCommit.schema, oursCommit.schema, theirsCommit.schema, resolutions);
+  const result: MergePreview = {
+    ...merged,
+    validation: validate(merged.schema, merged.provenance),
+  };
 
   if (!apply) return { result };
 
-  if (result.conflicts.length > 0) {
-    throw new ConflictError('Cannot apply merge: unresolved conflicts remain');
-  }
+  const blocked = applyBlockedReason(result.conflicts, result.validation);
+  if (blocked) throw new ConflictError(blocked);
 
   const commit: Commit = {
     id: generateId(),
