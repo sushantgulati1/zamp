@@ -1,4 +1,4 @@
-# Graft — version control for database schemas
+# Graft — version control for database schemas..
 
 Git's workflow — branch, diff, merge — applied to a database schema instead of files.
 Branch a schema, evolve it independently on each branch (add/drop/rename/retype columns,
